@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: recko-india-app
+    env: node
+    buildCommand: bun run build
+    startCommand: bun run start
+    envVars:
+      - key: NODE_ENV
+        value: production

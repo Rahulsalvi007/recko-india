@@ -1,0 +1,6 @@
+{
+  "name": "Recko India - Your Perfect Rental Partner",
+  "description": "Recko India is a unified rental marketplace featuring all rental assets together on the home page: residential flats & villas, commercial offices, student PGs, vehicles, hotel suites, gourmet dining tables, digital libraries, designer wedding outfits, sports turfs, and general appliances.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

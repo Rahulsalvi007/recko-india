@@ -1,0 +1,550 @@
+export type MainCategory = 'all' | 'residential' | 'commercial' | 'student' | 'vehicle' | 'hotel' | 'restaurant' | 'library' | 'general' | 'clothing' | 'sports_turf';
+
+export type ResidentialType = 'Apartment' | 'Villa' | 'PG' | 'Hostel' | 'Independent House';
+export type FurnishingStatus = 'Furnished' | 'Semi-Furnished' | 'Unfurnished';
+
+export type CommercialType = 'Office' | 'Shop' | 'Warehouse' | 'Co-working Space' | 'Industrial Property';
+
+export type StudentHousingType = 'College PG' | 'Student Hostel' | 'Shared Room' | 'Single Room';
+
+export type VehicleType = 'Bike' | 'Car' | 'Scooty' | 'Bicycle' | 'Luxury Car' | 'Luxury Cars';
+export type TransmissionType = 'Manual' | 'Automatic';
+export type FuelType = 'Petrol' | 'Diesel' | 'Electric' | 'Hybrid';
+
+export type GeneralItemCategory = 'Camera & Photography' | 'Home Appliances' | 'Furniture' | 'Gadgets & Gaming' | 'Event & Sound' | 'Power Tools' | 'Camping & Fitness';
+
+export type BusinessType = 'Property' | 'Hotel' | 'Restaurant' | 'Library' | 'Vehicle' | 'GeneralItem';
+
+export interface LandlordUser {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  password?: string;
+  status: 'Pending' | 'Approved' | 'Rejected' | 'Suspended';
+  requestedAt: string;
+  documentType?: string;
+  documentPhotoUrl?: string;
+  businessName?: string;
+  businessType?: BusinessType;
+  state?: string;
+  district?: string;
+  city: string;
+  address?: string;
+  idProofNumber?: string;
+  emailVerified?: boolean;
+}
+
+export interface TenantUser {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  status: 'Active' | 'Blocked';
+  joinedDate: string;
+}
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  password?: string;
+  createdAt: string;
+  avatarUrl?: string;
+  emailVerified?: boolean;
+  address?: string;
+  city?: string;
+  state?: string;
+  pinCode?: string;
+  govIdNumber?: string;
+  currentAddress?: string;
+}
+
+export interface PropertyDistanceMatrix {
+  railwayStationKm: number;
+  busStandKm: number;
+  hospitalKm: number;
+  collegeKm: number;
+  marketKm: number;
+  metroKm: number;
+}
+
+export interface PropertyTransitTimes {
+  walkMin: number;
+  bikeMin: number;
+  carMin: number;
+}
+
+export interface Property {
+  id: string;
+  title: string;
+  category: MainCategory;
+  subType: ResidentialType | CommercialType | StudentHousingType;
+  rentPerMonth: number;
+  deposit: number;
+  location: string;
+  state?: string;
+  district?: string;
+  city: string;
+  nearbyLandmark?: string;
+  nearbyCollege?: string;
+  distanceToCollegeKm?: number;
+  distances?: PropertyDistanceMatrix;
+  transitTimes?: PropertyTransitTimes;
+  images: string[];
+  bedrooms?: number;
+  bathrooms?: number;
+  areaSqFt: number;
+  furnishing?: FurnishingStatus;
+  amenities: string[];
+  ownerId?: string;
+  ownerName: string;
+  ownerContact: string;
+  ownerVerified: boolean;
+  status?: 'Approved' | 'Pending Approval' | 'Rejected';
+  aiSafetyScore?: number;
+  aiFlags?: string[];
+  acAvailable?: boolean;
+  petFriendly?: boolean;
+  rating: number;
+  reviewsCount: number;
+  description: string;
+  availableFrom: string;
+  genderPreference?: 'Boys' | 'Girls' | 'Unisex' | 'Any';
+  foodIncluded?: boolean;
+  isAvailable?: boolean;
+  mapLink?: string;
+  fullAddress?: string;
+  locationScreenshot?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+/* Hotel Module Types */
+export interface HotelRoom {
+  id: string;
+  roomType: 'Standard Room' | 'Deluxe Room' | 'Executive Suite' | 'Family Suite' | 'Presidential Suite';
+  pricePerNight: number;
+  capacity: number;
+  beds: string;
+  availableCount: number;
+  amenities: string[];
+  images: string[];
+}
+
+export interface Hotel {
+  id: string;
+  title: string;
+  city: string;
+  location: string;
+  state?: string;
+  rating: number;
+  reviewsCount: number;
+  images: string[];
+  description: string;
+  amenities: string[];
+  checkInTime: string;
+  checkOutTime: string;
+  rooms: HotelRoom[];
+  ownerId?: string;
+  ownerName: string;
+  ownerContact: string;
+  ownerVerified: boolean;
+  status: 'Approved' | 'Pending Approval' | 'Rejected';
+  isAvailable: boolean;
+  nearbyLandmark?: string;
+  distances?: PropertyDistanceMatrix;
+}
+
+/* Restaurant Module Types */
+export interface MenuItem {
+  id: string;
+  name: string;
+  category: 'Starters' | 'Main Course' | 'Desserts' | 'Beverages' | 'Chef Specials';
+  price: number;
+  description: string;
+  isVeg: boolean;
+  image?: string;
+}
+
+export interface Restaurant {
+  id: string;
+  title: string;
+  city: string;
+  location: string;
+  state?: string;
+  rating: number;
+  reviewsCount: number;
+  images: string[];
+  description: string;
+  cuisine: string[];
+  openingHours: string;
+  averageCostForTwo: number;
+  tableTypes: string[];
+  tablesCount: number;
+  menu: MenuItem[];
+  ownerId?: string;
+  ownerName: string;
+  ownerContact: string;
+  ownerVerified: boolean;
+  status: 'Approved' | 'Pending Approval' | 'Rejected';
+  isAvailable: boolean;
+  nearbyLandmark?: string;
+  distances?: PropertyDistanceMatrix;
+}
+
+/* Library Module Types */
+export interface LibraryMembershipPlan {
+  id: string;
+  name: string;
+  duration: 'Daily Pass' | 'Weekly Pass' | 'Monthly Pass' | 'Quarterly Pass';
+  price: number;
+  features: string[];
+}
+
+export interface Library {
+  id: string;
+  title: string;
+  city: string;
+  location: string;
+  state?: string;
+  rating: number;
+  reviewsCount: number;
+  images: string[];
+  description: string;
+  openingHours: string;
+  totalSeats: number;
+  availableSeats: number;
+  totalCabins: number;
+  availableCabins: number;
+  dailyPassPrice: number;
+  weeklyPassPrice: number;
+  monthlyPassPrice: number;
+  membershipPlans: LibraryMembershipPlan[];
+  amenities: string[];
+  rules: string[];
+  ownerId?: string;
+  ownerName: string;
+  ownerContact: string;
+  ownerVerified: boolean;
+  status: 'Approved' | 'Pending Approval' | 'Rejected';
+  isAvailable: boolean;
+  nearbyCollege?: string;
+  nearbyLandmark?: string;
+  distances?: PropertyDistanceMatrix;
+}
+
+export interface RoommateProfile {
+  id: string;
+  name: string;
+  age: number;
+  gender: 'Male' | 'Female' | 'Other';
+  college: string;
+  course: string;
+  year: string;
+  budgetPerMonth: number;
+  preferredLocation: string;
+  city?: string;
+  distanceKm?: number;
+  diet: 'Vegetarian' | 'Non-Vegetarian' | 'Eggetarian';
+  sleepSchedule: 'Early Riser' | 'Night Owl' | 'Flexible';
+  smoking: boolean;
+  petsAllowed: boolean;
+  bio: string;
+  studentVerified: boolean;
+  avatar: string;
+  lookingFor: string;
+  hobbies: string[];
+  phone?: string;
+  moveInDate?: string;
+  occupation?: string;
+}
+
+export interface Vehicle {
+  id: string;
+  title: string;
+  vehicleType: VehicleType;
+  brand: string;
+  modelName: string;
+  year: number;
+  rentPerDay: number;
+  rentPerHour: number;
+  deposit: number;
+  location: string;
+  state?: string;
+  district?: string;
+  city: string;
+  images: string[];
+  transmission?: TransmissionType;
+  fuelType: FuelType;
+  seats?: number;
+  mileageKm: string;
+  driverAvailable: boolean;
+  driverChargePerDay?: number;
+  rating: number;
+  reviewsCount: number;
+  ownerId?: string;
+  ownerName: string;
+  ownerContact: string;
+  status?: 'Approved' | 'Pending Approval' | 'Rejected';
+  aiSafetyScore?: number;
+  aiFlags?: string[];
+  isGPSAvailable: boolean;
+  currentLat?: number;
+  currentLng?: number;
+  speedKmh?: number;
+  fuelLevelPercent?: number;
+  licensePlate: string;
+  isAvailable?: boolean;
+}
+
+export interface GeneralItem {
+  id: string;
+  title: string;
+  category: 'general';
+  subType: GeneralItemCategory;
+  rentPerDay: number;
+  rentPerMonth?: number;
+  deposit: number;
+  location: string;
+  state?: string;
+  district?: string;
+  city: string;
+  images: string[];
+  specs: string[];
+  ownerId?: string;
+  ownerName: string;
+  ownerContact: string;
+  ownerVerified: boolean;
+  status?: 'Approved' | 'Pending Approval' | 'Rejected';
+  rating: number;
+  reviewsCount: number;
+  description: string;
+  isAvailable?: boolean;
+  condition?: 'Brand New' | 'Like New' | 'Good Condition';
+}
+
+export interface RentalBooking {
+  id: string;
+  type: 'property' | 'vehicle' | 'hotel' | 'restaurant' | 'library' | 'general' | 'clothing' | 'sports_turf';
+  itemId: string;
+  itemTitle: string;
+  itemImage: string;
+  startDate: string;
+  endDate?: string;
+  monthsCount?: number;
+  daysCount?: number;
+  totalPrice: number;
+  withDriver?: boolean;
+  status: 'Pending Verification' | 'Owner Reviewing' | 'Approved' | 'Booking Confirmed' | 'Pending Requests' | 'Accepted' | 'Rejected' | 'Completed' | 'Active' | 'Cancelled';
+  trackingActive?: boolean;
+  currentLat?: number;
+  currentLng?: number;
+  speedKmh?: number;
+  fuelPercent?: number;
+  userName: string;
+  userPhone: string;
+  studentVerified?: boolean;
+  bookingDate?: string;
+  ownerId?: string;
+  ownerName?: string;
+  ownerContact?: string;
+  rejectionReason?: string;
+  decisionDate?: string;
+
+  /* Verification & Token Fields */
+  tokenPaidAmount?: number;
+  tokenPaymentStatus?: 'Paid' | 'Pending' | 'Refunded';
+  userEmail?: string;
+  dob?: string;
+  currentAddress?: string;
+  occupation?: string;
+  monthlyIncome?: string;
+  occupantsCount?: number;
+  moveInDate?: string;
+  govIdType?: string;
+  govIdNumber?: string;
+  idProofUrl?: string;
+  emergencyContact?: string;
+  
+  /* Module Specific Booking Details */
+  hotelRoomType?: string;
+  guestsCount?: number;
+  restaurantTime?: string;
+  restaurantTableType?: string;
+  libraryPassType?: string;
+  allocatedSeatNumber?: string;
+  qrCodePass?: string;
+}
+
+export interface WishlistItem {
+  id: string;
+  itemId: string;
+  category: MainCategory;
+  title: string;
+  image: string;
+  location: string;
+  city: string;
+  priceDisplay: string;
+  rating: number;
+  savedAt: string;
+}
+
+export interface AbuseReport {
+  id: string;
+  itemId: string;
+  itemTitle: string;
+  reporterName: string;
+  reason: string;
+  date: string;
+  type: 'Fake Listing' | 'Abusive Pricing' | 'Spam Phone' | 'Duplicate Photos';
+  status: 'Pending' | 'Resolved' | 'Ignored';
+}
+
+export interface OwnerNotification {
+  id: string;
+  ownerId: string;
+  title: string;
+  message: string;
+  date: string;
+  type: 'Booking' | 'AdminMessage' | 'System' | 'Approval';
+  read: boolean;
+}
+
+export interface PropertyReview {
+  id: string;
+  itemId: string;
+  itemType: MainCategory;
+  userName: string;
+  rating: number;
+  comment: string;
+  date: string;
+}
+
+export interface AIRecommendationRequest {
+  category: MainCategory;
+  budget: number;
+  location: string;
+  familyOrSharing: string;
+  furnishingPreference?: string;
+  specialNeeds?: string;
+}
+
+export interface AIRecommendationResult {
+  verdict?: string;
+  summary: string;
+  recommendedIds: string[];
+  keyFactors: string[];
+  budgetTips: string;
+  parsedParams?: {
+    category?: MainCategory;
+    maxBudget?: number;
+    city?: string;
+    guests?: number;
+    time?: string;
+  };
+}
+
+export interface JuniorAdmin {
+  id: string;
+  name: string;
+  email: string;
+  username: string;
+  password: string;
+  role: 'Junior Admin';
+  permissions: {
+    canManageOwners: boolean;
+    canViewFeedbacks: boolean;
+    canManageListings: boolean;
+    canViewAnalytics: boolean;
+  };
+  createdBy: string;
+  createdAt: string;
+  status: 'Active' | 'Suspended';
+}
+
+/* Clothing & Fashion Rental Types */
+export interface ClothingItem {
+  id: string;
+  title: string;
+  category: 'clothing';
+  gender: 'Boys / Men' | 'Girls / Women' | 'Kids' | 'Unisex';
+  clothingType: 'Wedding Lehenga' | 'Sherwani' | 'Designer Suit' | 'Evening Gown' | 'Pre-wedding Outfit' | 'Traditional Saree' | 'Party Wear';
+  size: 'S' | 'M' | 'L' | 'XL' | 'XXL' | 'Free Size';
+  rentPerDay: number;
+  deposit: number;
+  location: string;
+  city: string;
+  images: string[];
+  dryCleaned: boolean;
+  ownerId?: string;
+  ownerName: string;
+  ownerContact: string;
+  status?: 'Approved' | 'Pending Approval' | 'Rejected';
+  rating: number;
+  reviewsCount: number;
+  description: string;
+  isAvailable?: boolean;
+}
+
+/* Sports & Turf Rental Types */
+export interface SportsTurfItem {
+  id: string;
+  title: string;
+  category: 'sports_turf';
+  turfType: 'Box Cricket Turf' | 'Football Ground' | 'Badminton Court' | 'Swimming Pool' | 'Camping & Trekking Gear' | 'Sports Equipment';
+  rentPerHour: number;
+  rentPerDay?: number;
+  location: string;
+  city: string;
+  images: string[];
+  amenities: string[];
+  floodLights: boolean;
+  ownerId?: string;
+  ownerName: string;
+  ownerContact: string;
+  status?: 'Approved' | 'Pending Approval' | 'Rejected';
+  rating: number;
+  reviewsCount: number;
+  description: string;
+  isAvailable?: boolean;
+}
+
+/* Global App Notification */
+export interface AppNotification {
+  id: string;
+  userId?: string;
+  userEmail?: string;
+  targetPhone?: string;
+  ownerId?: string;
+  ownerEmail?: string;
+  recipientRole?: 'user' | 'landlord' | 'admin' | 'all';
+  title: string;
+  message: string;
+  type: 'booking' | 'approval' | 'student_discount' | 'system' | 'ai_alert' | 'image_removed';
+  timestamp: string;
+  read: boolean;
+  link?: string;
+  actionRequired?: boolean;
+  assetId?: string;
+}
+
+/* Duplicate / Fake Image Audit Record */
+export interface DuplicateImageAuditRecord {
+  id: string;
+  imageUrl: string;
+  assetId: string;
+  assetTitle: string;
+  assetType: string;
+  ownerName: string;
+  ownerContact: string;
+  ownerId?: string;
+  action: 'Removed' | 'Flagged' | 'Whitelisted';
+  removedAt: string;
+  notificationSent: boolean;
+  reason: string;
+}
+
+
+

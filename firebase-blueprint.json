@@ -1,0 +1,291 @@
+{
+  "entities": {
+    "properties": {
+      "title": "Properties",
+      "description": "Residential, commercial, and student property listings",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "category": { "type": "string" },
+        "subType": { "type": "string" },
+        "rentPerMonth": { "type": "number" },
+        "deposit": { "type": "number" },
+        "location": { "type": "string" },
+        "state": { "type": "string" },
+        "district": { "type": "string" },
+        "city": { "type": "string" },
+        "nearbyLandmark": { "type": "string" },
+        "nearbyCollege": { "type": "string" },
+        "distanceToCollegeKm": { "type": "number" },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "bedrooms": { "type": "number" },
+        "bathrooms": { "type": "number" },
+        "areaSqFt": { "type": "number" },
+        "furnishing": { "type": "string" },
+        "amenities": { "type": "array", "items": { "type": "string" } },
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "ownerContact": { "type": "string" },
+        "ownerVerified": { "type": "boolean" },
+        "status": { "type": "string" },
+        "aiSafetyScore": { "type": "number" },
+        "rating": { "type": "number" },
+        "reviewsCount": { "type": "number" },
+        "description": { "type": "string" },
+        "availableFrom": { "type": "string" },
+        "genderPreference": { "type": "string" },
+        "foodIncluded": { "type": "boolean" },
+        "isAvailable": { "type": "boolean" }
+      },
+      "required": ["id", "title", "category", "rentPerMonth", "city"]
+    },
+    "hotels": {
+      "title": "Hotels",
+      "description": "Hotel and suite listings",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "city": { "type": "string" },
+        "location": { "type": "string" },
+        "rating": { "type": "number" },
+        "reviewsCount": { "type": "number" },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "description": { "type": "string" },
+        "amenities": { "type": "array", "items": { "type": "string" } },
+        "checkInTime": { "type": "string" },
+        "checkOutTime": { "type": "string" },
+        "rooms": { "type": "array" },
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "ownerContact": { "type": "string" },
+        "status": { "type": "string" },
+        "isAvailable": { "type": "boolean" }
+      },
+      "required": ["id", "title", "city"]
+    },
+    "restaurants": {
+      "title": "Restaurants",
+      "description": "Dining and restaurant listings",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "city": { "type": "string" },
+        "location": { "type": "string" },
+        "rating": { "type": "number" },
+        "reviewsCount": { "type": "number" },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "description": { "type": "string" },
+        "cuisine": { "type": "array", "items": { "type": "string" } },
+        "openingHours": { "type": "string" },
+        "averageCostForTwo": { "type": "number" },
+        "tablesCount": { "type": "number" },
+        "menu": { "type": "array" },
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "status": { "type": "string" },
+        "isAvailable": { "type": "boolean" }
+      },
+      "required": ["id", "title", "city"]
+    },
+    "libraries": {
+      "title": "Libraries",
+      "description": "Study library and quiet space listings",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "city": { "type": "string" },
+        "location": { "type": "string" },
+        "rating": { "type": "number" },
+        "reviewsCount": { "type": "number" },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "description": { "type": "string" },
+        "totalSeats": { "type": "number" },
+        "availableSeats": { "type": "number" },
+        "dailyPassPrice": { "type": "number" },
+        "membershipPlans": { "type": "array" },
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "status": { "type": "string" },
+        "isAvailable": { "type": "boolean" }
+      },
+      "required": ["id", "title", "city"]
+    },
+    "vehicles": {
+      "title": "Vehicles",
+      "description": "Vehicle rental listings with GPS tracking",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "vehicleType": { "type": "string" },
+        "brand": { "type": "string" },
+        "modelName": { "type": "string" },
+        "rentPerDay": { "type": "number" },
+        "rentPerHour": { "type": "number" },
+        "city": { "type": "string" },
+        "location": { "type": "string" },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "fuelType": { "type": "string" },
+        "licensePlate": { "type": "string" },
+        "isGPSAvailable": { "type": "boolean" },
+        "ownerId": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "status": { "type": "string" },
+        "isAvailable": { "type": "boolean" }
+      },
+      "required": ["id", "title", "city", "vehicleType"]
+    },
+    "roommates": {
+      "title": "Roommates",
+      "description": "Student roommate profiles",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "age": { "type": "number" },
+        "gender": { "type": "string" },
+        "college": { "type": "string" },
+        "budgetPerMonth": { "type": "number" },
+        "preferredLocation": { "type": "string" },
+        "bio": { "type": "string" },
+        "avatar": { "type": "string" },
+        "studentVerified": { "type": "boolean" }
+      },
+      "required": ["id", "name", "college"]
+    },
+    "landlords": {
+      "title": "Landlords",
+      "description": "Landlord and business owner user profiles",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "status": { "type": "string" },
+        "requestedAt": { "type": "string" },
+        "businessType": { "type": "string" },
+        "city": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "phone"]
+    },
+    "bookings": {
+      "title": "Bookings",
+      "description": "Rental and reservation bookings",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "itemId": { "type": "string" },
+        "itemTitle": { "type": "string" },
+        "itemImage": { "type": "string" },
+        "startDate": { "type": "string" },
+        "totalPrice": { "type": "number" },
+        "status": { "type": "string" },
+        "userName": { "type": "string" },
+        "userPhone": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "bookingDate": { "type": "string" }
+      },
+      "required": ["id", "type", "itemId", "totalPrice", "status", "userName"]
+    },
+    "reports": {
+      "title": "Reports",
+      "description": "Abuse reports for admin review",
+      "properties": {
+        "id": { "type": "string" },
+        "itemId": { "type": "string" },
+        "itemTitle": { "type": "string" },
+        "reporterName": { "type": "string" },
+        "reason": { "type": "string" },
+        "type": { "type": "string" },
+        "status": { "type": "string" },
+        "date": { "type": "string" }
+      },
+      "required": ["id", "itemId", "reason", "status"]
+    },
+    "clothing": {
+      "title": "Clothing",
+      "description": "Designer wedding outfits, sherwanis, and lehengas",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "clothingType": { "type": "string" },
+        "gender": { "type": "string" },
+        "size": { "type": "string" },
+        "rentPerDay": { "type": "number" },
+        "deposit": { "type": "number" },
+        "city": { "type": "string" },
+        "location": { "type": "string" },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "dryCleaned": { "type": "boolean" },
+        "ownerName": { "type": "string" },
+        "ownerContact": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "title", "clothingType", "rentPerDay"]
+    },
+    "sports_turfs": {
+      "title": "Sports Turfs",
+      "description": "Sports turfs, box cricket, and athletic grounds",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "turfType": { "type": "string" },
+        "rentPerHour": { "type": "number" },
+        "rentPerDay": { "type": "number" },
+        "city": { "type": "string" },
+        "location": { "type": "string" },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "floodLights": { "type": "boolean" },
+        "ownerName": { "type": "string" },
+        "ownerContact": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "title", "turfType", "rentPerHour"]
+    },
+    "general_items": {
+      "title": "General Items",
+      "description": "Appliances, gadgets, furniture, and tools",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "subType": { "type": "string" },
+        "rentPerMonth": { "type": "number" },
+        "deposit": { "type": "number" },
+        "city": { "type": "string" },
+        "location": { "type": "string" },
+        "images": { "type": "array", "items": { "type": "string" } },
+        "ownerName": { "type": "string" },
+        "ownerContact": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "title", "subType", "rentPerMonth"]
+    },
+    "notifications": {
+      "title": "Notifications",
+      "description": "Real-time user and landlord notification alerts",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "read": { "type": "boolean" },
+        "userEmail": { "type": "string" },
+        "ownerEmail": { "type": "string" }
+      },
+      "required": ["id", "title", "message"]
+    },
+    "users": {
+      "title": "Users",
+      "description": "Renter and user accounts",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "studentStatus": { "type": "string" },
+        "college": { "type": "string" },
+        "city": { "type": "string" }
+      },
+      "required": ["id", "name", "email"]
+    }
+  }
+}

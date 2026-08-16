@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <rect width="512" height="512" rx="128" fill="#09090b"/>
+  <!-- Outer Location Pin & House Roof Shape -->
+  <path d="M256 70 L390 190 V320 C390 390 256 450 256 450 C256 450 122 390 122 320 V190 Z" 
+        fill="none" stroke="#ffffff" stroke-width="28" stroke-linejoin="round" stroke-linecap="round"/>
+  <!-- Keyhole shape in center -->
+  <circle cx="256" cy="245" r="38" fill="#ffffff" />
+  <polygon points="234,260 278,260 290,340 222,340" fill="#ffffff" />
+</svg>
