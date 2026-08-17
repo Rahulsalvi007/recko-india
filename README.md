@@ -6,7 +6,7 @@
 
 This contains everything you need to run your app locally.
 
-View your app in AI Studio: https://ai.studio/apps/317d80d9-581a-4ef9-9f42-572ea7b74324
+View your app: https:/recko-india.netlify.app
 
 ## Run Locally
 
