@@ -6,7 +6,8 @@
 
 This contains everything you need to run your app locally.
 
-View your app: https:/recko-india.netlify.app
+View your app:
+ https:/recko-india.netlify.app
 
 ## Run Locally
 
