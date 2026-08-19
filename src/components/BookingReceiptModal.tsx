@@ -57,26 +57,27 @@ export const BookingReceiptModal: React.FC<BookingReceiptModalProps> = ({
             <div>
               <div className="flex items-center space-x-2">
                 <span className="text-[10px] uppercase font-bold tracking-widest bg-amber-400/10 text-amber-300 px-2.5 py-0.5 rounded border border-amber-400/30">
-                  Official GST Token Voucher
+                  RECKO INDIA — RENTAL RECEIPT
                 </span>
-                <span className="text-[10px] font-bold text-amber-400 flex items-center space-x-0.5">
+                <span className="text-[10px] font-bold text-emerald-400 flex items-center space-x-0.5">
                   <ShieldCheck className="h-3 w-3" />
-                  <span>Escrow Held ✓</span>
+                  <span>Escrow Locked ✓</span>
                 </span>
               </div>
-              <h2 className="text-base sm:text-xl font-bold mt-0.5 text-white">Rental Booking Token Receipt</h2>
+              <h2 className="text-base sm:text-xl font-bold mt-0.5 text-white">RECKO INDIA — OFFICIAL RENTAL TOKEN RECEIPT</h2>
             </div>
           </div>
         </div>
 
-        {/* Receipt Body (Printable Area - White Background, Black Text & Gold) */}
+        {/* Receipt Body (Printable Area) */}
         <div className="p-4 sm:p-6 space-y-4 text-slate-900 overflow-y-auto printable-area flex-1 text-xs custom-scrollbar">
           
-          {/* Booking Reference & Escrow Status */}
+          {/* Section 1: Booking Reference & Status */}
           <div className="bg-slate-50 border border-amber-400/30 rounded-2xl p-3.5 sm:p-4 flex justify-between items-center">
             <div>
-              <span className="text-slate-500 font-bold block text-[10px] uppercase tracking-wider">Booking Reference</span>
+              <span className="text-slate-500 font-bold block text-[10px] uppercase tracking-wider">Booking ID</span>
               <span className="font-mono font-black text-amber-700 text-sm sm:text-base">{booking.id}</span>
+              <span className="text-[10px] text-slate-500 font-mono block mt-0.5">Txn ID: {booking.transactionId || 'TXN-98421092'}</span>
             </div>
             <div className="text-right">
               <span className="text-slate-500 font-bold block text-[10px] uppercase tracking-wider">Escrow Status</span>
@@ -85,91 +86,125 @@ export const BookingReceiptModal: React.FC<BookingReceiptModalProps> = ({
                   ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
                   : 'bg-amber-400 text-slate-950 border-yellow-300 font-black shadow-xs'
               }`}>
-                {booking.status === 'Accepted' ? 'Approved ✓' : '🟡 Escrow Locked • Pending Host'}
+                {booking.status === 'Accepted' ? 'Approved ✓' : '🟡 Escrow Locked • Pending Host Review'}
               </span>
             </div>
           </div>
 
-          {/* Rented Asset Details */}
-          <div>
-            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1.5">
-              Rental Item / Property Details
+          {/* Section 2: Property Listing Details */}
+          <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 space-y-2">
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">
+              1. Rented Property / Listing Details
             </span>
-            <div className="flex items-center space-x-3 bg-slate-50 border border-slate-200 p-3 rounded-2xl">
+            <div className="flex items-start space-x-3">
               <img
                 src={booking.itemImage}
                 alt={booking.itemTitle}
-                className="h-14 w-14 sm:h-16 sm:w-16 rounded-xl object-cover shrink-0 border border-amber-400/40"
+                className="h-16 w-16 rounded-xl object-cover shrink-0 border border-amber-400/40"
               />
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 space-y-0.5">
                 <h4 className="font-bold text-xs sm:text-sm text-slate-900 truncate">{booking.itemTitle}</h4>
-                <p className="text-xs text-slate-500 font-medium capitalize">
-                  {booking.type} Asset • Recko India Escrow
+                <p className="text-[11px] text-slate-600 font-medium">
+                  {booking.fullAddress || booking.itemTitle}
                 </p>
-                <div className="flex items-center space-x-2 mt-1">
-                  <span className="text-[10px] bg-amber-50 text-amber-800 px-2 py-0.5 rounded border border-amber-300 font-mono font-bold">
-                    Token Paid: ₹{booking.tokenPaidAmount || 99}
+                <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span className="text-[10px] bg-slate-200 text-slate-800 px-2 py-0.5 rounded font-bold">
+                    {booking.roomType || '1BHK Unit'}
+                  </span>
+                  <span className="text-[10px] bg-slate-200 text-slate-800 px-2 py-0.5 rounded font-bold">
+                    {booking.furnishedStatus || 'Semi-Furnished'}
                   </span>
                   {booking.ownerName && (
-                    <span className="text-[10px] text-slate-600 font-medium">Host: <strong className="text-slate-900">{booking.ownerName}</strong></span>
+                    <span className="text-[10px] text-slate-600 font-medium">Owner: <strong className="text-slate-900">{booking.ownerName}</strong></span>
                   )}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Tenant KYC & Verification Details */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 bg-slate-50 p-3.5 sm:p-4 rounded-2xl border border-slate-200">
-            <div>
-              <span className="text-slate-500 font-bold block text-[10px] uppercase">Tenant Legal Name</span>
-              <span className="font-bold text-slate-900 text-xs block mt-0.5">{booking.userName || 'Rahul Sharma'}</span>
-            </div>
-
-            <div>
-              <span className="text-slate-500 font-bold block text-[10px] uppercase">Contact Number</span>
-              <span className="font-mono font-bold text-slate-900 text-xs block mt-0.5">{booking.userPhone || '9876543210'}</span>
-            </div>
-
-            {booking.userEmail && (
-              <div className="sm:col-span-2 pt-2 border-t border-slate-200">
-                <span className="text-slate-500 font-bold block text-[10px] uppercase">Account Email</span>
-                <span className="font-mono font-bold text-amber-700 text-xs truncate block">{booking.userEmail}</span>
+          {/* Section 3: Tenant Details & KYC */}
+          <div className="bg-slate-50 p-3.5 sm:p-4 rounded-2xl border border-slate-200 space-y-2.5">
+            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block border-b border-slate-200 pb-1">
+              2. Verified Tenant Details & Identity Verification
+            </span>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div>
+                <span className="text-slate-500 text-[10px] block">Full Tenant Name</span>
+                <strong className="text-slate-900 font-bold">{booking.userName || 'Rahul Sharma'}</strong>
               </div>
-            )}
-
-            {booking.govIdNumber && (
-              <div className="sm:col-span-2 pt-2 border-t border-slate-200">
-                <span className="text-slate-500 font-bold block text-[10px] uppercase">Government Identity Proof</span>
-                <span className="font-mono font-bold text-amber-700 text-xs flex items-center space-x-1 mt-0.5">
-                  <BadgeCheck className="h-3.5 w-3.5 text-amber-600" />
-                  <span>{booking.govIdType || 'Aadhaar Card'}: {booking.govIdNumber} (Verified ✓)</span>
-                </span>
+              <div>
+                <span className="text-slate-500 text-[10px] block">Mobile Number</span>
+                <strong className="text-slate-900 font-mono font-bold">{booking.userPhone || '9876543210'}</strong>
               </div>
-            )}
+              {booking.userEmail && (
+                <div>
+                  <span className="text-slate-500 text-[10px] block">Email Address</span>
+                  <strong className="text-amber-700 font-mono font-bold truncate block">{booking.userEmail}</strong>
+                </div>
+              )}
+              {booking.occupation && (
+                <div>
+                  <span className="text-slate-500 text-[10px] block">Occupation & Company/College</span>
+                  <strong className="text-slate-900 font-bold">{booking.occupation} ({booking.companyCollegeName || 'Infosys / COEP'})</strong>
+                </div>
+              )}
+              {booking.currentAddress && (
+                <div className="sm:col-span-2">
+                  <span className="text-slate-500 text-[10px] block">Current Address</span>
+                  <span className="text-slate-800 font-medium">{booking.currentAddress}</span>
+                </div>
+              )}
+              {booking.permanentAddress && (
+                <div className="sm:col-span-2">
+                  <span className="text-slate-500 text-[10px] block">Permanent Address</span>
+                  <span className="text-slate-800 font-medium">{booking.permanentAddress}</span>
+                </div>
+              )}
+              {booking.govIdNumber && (
+                <div className="sm:col-span-2 pt-1 border-t border-slate-200">
+                  <span className="text-slate-500 text-[10px] block">KYC Government Identity</span>
+                  <span className="font-mono font-bold text-amber-700 flex items-center space-x-1">
+                    <BadgeCheck className="h-3.5 w-3.5 text-amber-600" />
+                    <span>{booking.govIdType || 'Aadhaar Card'}: {booking.govIdNumber} (Verified ✓ • Encrypted)</span>
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
 
-            <div className="pt-2 border-t border-slate-200">
-              <span className="text-slate-500 font-bold block text-[10px] uppercase">Move-In / Start Date</span>
+          {/* Section 4: Rental Period */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 bg-slate-50 p-3 rounded-2xl border border-slate-200">
+            <div>
+              <span className="text-slate-500 text-[10px] uppercase font-bold block">Move-In Date</span>
               <span className="font-bold text-slate-900 text-xs block mt-0.5">{booking.startDate}</span>
             </div>
-
-            <div className="pt-2 border-t border-slate-200">
-              <span className="text-slate-500 font-bold block text-[10px] uppercase">Date of Request</span>
-              <span className="font-bold text-slate-900 text-xs block mt-0.5">{booking.bookingDate || 'Recent'}</span>
-            </div>
-          </div>
-
-          {/* Amount Paid Breakdown (White Background & Gold Card) */}
-          <div className="bg-amber-500/10 border border-amber-400/40 p-4 rounded-2xl flex justify-between items-center text-slate-900 shadow-sm">
             <div>
-              <span className="text-xs font-bold block text-amber-900">Token Fee Paid (Held in Escrow)</span>
-              <span className="text-[10px] text-slate-600 font-medium">100% Refundable if unconfirmed within 24h</span>
+              <span className="text-slate-500 text-[10px] uppercase font-bold block">Expected Move-Out</span>
+              <span className="font-bold text-slate-900 text-xs block mt-0.5">{booking.expectedMoveOutDate || '11 Months'}</span>
             </div>
-            <span className="text-xl sm:text-2xl font-black text-amber-700 font-mono">
-              ₹{booking.tokenPaidAmount || 99}
-            </span>
+            <div>
+              <span className="text-slate-500 text-[10px] uppercase font-bold block">Lease Duration</span>
+              <span className="font-bold text-slate-900 text-xs block mt-0.5">{booking.rentalDurationType || '11 Months Lease'}</span>
+            </div>
           </div>
 
-          {/* QR Code & Authenticity Seal */}
+          {/* Section 5: Cost Breakdown */}
+          <div className="bg-amber-500/10 border border-amber-400/40 p-4 rounded-2xl space-y-2 text-slate-900 shadow-sm">
+            <div className="flex justify-between items-center border-b border-amber-300/50 pb-2">
+              <span className="text-xs font-bold text-amber-900">Token Fee Paid (Held in Escrow)</span>
+              <span className="text-xl font-black text-amber-700 font-mono">
+                ₹{booking.tokenPaidAmount || 500} (PAID ✓)
+              </span>
+            </div>
+            <div className="flex justify-between text-[11px] text-slate-700 pt-1">
+              <span>Monthly Rent: <strong>₹{booking.totalPrice?.toLocaleString('en-IN') || '10,000'}</strong></span>
+              <span>Deposit: <strong>₹{((booking.totalPrice || 10000) * 2).toLocaleString('en-IN')}</strong></span>
+              <span>Payment Mode: <strong className="uppercase">{booking.paymentMethod || 'UPI'}</strong></span>
+            </div>
+          </div>
+
+          {/* Section 6: QR Code & Verification Signature */}
           <div className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl">
             <div className="flex items-center space-x-2">
               <div className="h-10 w-10 bg-white p-1 rounded-lg flex items-center justify-center shrink-0 border border-slate-200 shadow-xs">
@@ -177,7 +212,7 @@ export const BookingReceiptModal: React.FC<BookingReceiptModalProps> = ({
               </div>
               <div>
                 <span className="text-[10px] text-slate-700 font-bold block">Digital Signature & Hash</span>
-                <span className="text-[9px] font-mono text-slate-500 truncate block">GSTIN: 27AAACR9281Q1Z0 • SECURE-VPA</span>
+                <span className="text-[9px] font-mono text-slate-500 truncate block">GSTIN: 27AAACR9281Q1Z0 • SECURE-ESCROW-VPA</span>
               </div>
             </div>
             <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded border border-emerald-300">
@@ -185,7 +220,7 @@ export const BookingReceiptModal: React.FC<BookingReceiptModalProps> = ({
             </span>
           </div>
 
-          {/* Action buttons (Print & Close) */}
+          {/* Action buttons (Print & PDF) */}
           <div className="pt-2 flex flex-col sm:flex-row gap-2.5 shrink-0">
             <button
               type="button"
@@ -193,7 +228,7 @@ export const BookingReceiptModal: React.FC<BookingReceiptModalProps> = ({
               className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 rounded-xl border border-slate-800 flex items-center justify-center space-x-2 transition-colors cursor-pointer"
             >
               <Printer className="h-4 w-4 text-amber-400" />
-              <span>Print / Save PDF</span>
+              <span>Print / Download PDF Receipt</span>
             </button>
 
             <button

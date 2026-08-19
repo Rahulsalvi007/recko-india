@@ -8,7 +8,9 @@ import { HotelCard } from './components/HotelCard';
 import { HotelDetailModal } from './components/HotelDetailModal';
 import { RestaurantCard } from './components/RestaurantCard';
 import { RestaurantDetailModal } from './components/RestaurantDetailModal';
+import { RestaurantTableReservationModal } from './components/RestaurantTableReservationModal';
 import { LibraryCard } from './components/LibraryCard';
+import { SportsTurfBookingModal } from './components/SportsTurfBookingModal';
 import { LibraryDetailModal } from './components/LibraryDetailModal';
 import { DirectionsMapModal } from './components/DirectionsMapModal';
 import { WishlistModal } from './components/WishlistModal';
@@ -25,6 +27,7 @@ import { EditListingModal } from './components/EditListingModal';
 import { MyBookingsSection } from './components/MyBookingsSection';
 import { UserAuthModal } from './components/UserAuthModal';
 import { UserProfileModal } from './components/UserProfileModal';
+import { VehicleInspectionModal } from './components/VehicleInspectionModal';
 import { GeneralItemCard } from './components/GeneralItemCard';
 import { GeneralItemDetailModal } from './components/GeneralItemDetailModal';
 import { ClothingCard } from './components/ClothingCard';
@@ -36,6 +39,9 @@ import { NearbyRadarModal } from './components/NearbyRadarModal';
 import { RoommateChatModal } from './components/RoommateChatModal';
 import { PostRoommateModal } from './components/PostRoommateModal';
 import { BookingChatModal, ChatItemContext } from './components/BookingChatModal';
+import { SplitBillCalculatorModal } from './components/SplitBillCalculatorModal';
+import { MaintenanceTicketModal } from './components/MaintenanceTicketModal';
+import { BottomNavDock } from './components/BottomNavDock';
 import { Footer } from './components/Footer';
 
 import {
@@ -234,6 +240,13 @@ export default function App() {
   const [isUserAuthModalOpen, setIsUserAuthModalOpen] = useState(false);
   const [isUserProfileModalOpen, setIsUserProfileModalOpen] = useState(false);
   const [selectedGeneralItem, setSelectedGeneralItem] = useState<GeneralItem | null>(null);
+  const [activeVehicleInspection, setActiveVehicleInspection] = useState<{ booking: RentalBooking; mode: 'pickup' | 'return'; } | null>(null);
+  const [reservingRestaurant, setReservingRestaurant] = useState<Restaurant | null>(null);
+  const [bookingSportsTurf, setBookingSportsTurf] = useState<SportsTurfItem | null>(null);
+
+  // Smart Tool Modal States
+  const [isSplitBillModalOpen, setIsSplitBillModalOpen] = useState(false);
+  const [isMaintenanceModalOpen, setIsMaintenanceModalOpen] = useState(false);
 
   const [bookings, setBookings] = useState<RentalBooking[]>(() => {
     const saved = localStorage.getItem('renthub_bookings');
@@ -321,6 +334,19 @@ export default function App() {
     const saved = localStorage.getItem('renthub_saved');
     return saved ? JSON.parse(saved) : [];
   });
+
+  // User-isolated Wishlist (Filter strictly per logged-in user's email)
+  const activeUserWishlist = useMemo(() => {
+    const userEmailKey = currentUser && currentUser.email ? currentUser.email.toLowerCase().trim() : 'guest';
+    return wishlist.filter((w) => {
+      const wEmail = w.userEmail ? w.userEmail.toLowerCase().trim() : 'guest';
+      return wEmail === userEmailKey;
+    });
+  }, [wishlist, currentUser]);
+
+  const activeUserSavedIds = useMemo(() => {
+    return activeUserWishlist.map((w) => w.itemId || w.id);
+  }, [activeUserWishlist]);
 
   // Modal Control States
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
@@ -497,6 +523,14 @@ export default function App() {
     deleteDocument('bookings', id);
   };
 
+  // Helper to safely merge real-time Firestore snapshots with local state (prevents wiping un-synced local items)
+  const mergeFirestoreItems = <T extends { id: string }>(remote: T[], prev: T[]): T[] => {
+    if (!remote || remote.length === 0) return prev;
+    const remoteIds = new Set(remote.map((r) => r.id));
+    const pendingLocal = prev.filter((p) => !remoteIds.has(p.id));
+    return [...pendingLocal, ...remote];
+  };
+
   // Save to LocalStorage & Firebase Sync
   useEffect(() => {
     // Seed default data into Firestore if empty
@@ -504,46 +538,67 @@ export default function App() {
 
     // Subscribe to Firestore collections in real time
     const unsubProp = subscribeCollection<Property>('properties', (data) => {
-      if (data.length > 0) setProperties(data);
+      if (data.length > 0) setProperties((prev) => mergeFirestoreItems(data, prev));
     });
     const unsubVeh = subscribeCollection<Vehicle>('vehicles', (data) => {
-      if (data.length > 0) setVehicles(data);
+      if (data.length > 0) setVehicles((prev) => mergeFirestoreItems(data, prev));
     });
     const unsubHot = subscribeCollection<Hotel>('hotels', (data) => {
-      if (data.length > 0) setHotels(data);
+      if (data.length > 0) setHotels((prev) => mergeFirestoreItems(data, prev));
     });
     const unsubRest = subscribeCollection<Restaurant>('restaurants', (data) => {
-      if (data.length > 0) setRestaurants(data);
+      if (data.length > 0) setRestaurants((prev) => mergeFirestoreItems(data, prev));
     });
     const unsubLib = subscribeCollection<Library>('libraries', (data) => {
-      if (data.length > 0) setLibraries(data);
+      if (data.length > 0) setLibraries((prev) => mergeFirestoreItems(data, prev));
     });
     const unsubLand = subscribeCollection<LandlordUser>('landlords', (data) => {
-      if (data.length > 0) setLandlords(data);
+      if (data.length > 0) setLandlords((prev) => mergeFirestoreItems(data, prev));
     });
     const unsubBook = subscribeCollection<RentalBooking>('bookings', (data) => {
-      if (data.length > 0) setBookings(data);
+      if (data.length > 0) setBookings((prev) => mergeFirestoreItems(data, prev));
     });
     const unsubSaved = subscribeCollection<WishlistItem>('saved_items', (data) => {
       if (data.length > 0) {
-        setWishlist(data);
-        setSavedIds(data.map((item) => item.id));
+        setWishlist((prev) => mergeFirestoreItems(data, prev));
+        setSavedIds((prev) => Array.from(new Set([...data.map((item) => item.id), ...prev])));
       }
     });
     const unsubRm = subscribeCollection<RoommateProfile>('roommates', (data) => {
-      if (data.length > 0) setRoommates(data);
+      if (data.length > 0) setRoommates((prev) => mergeFirestoreItems(data, prev));
     });
     const unsubGen = subscribeCollection<GeneralItem>('general_items', (data) => {
-      if (data.length > 0) setGeneralItems(data);
+      if (data.length > 0) setGeneralItems((prev) => mergeFirestoreItems(data, prev));
     });
     const unsubCloth = subscribeCollection<ClothingItem>('clothing', (data) => {
-      if (data.length > 0) setClothingItems(data);
+      if (data.length > 0) setClothingItems((prev) => mergeFirestoreItems(data, prev));
     });
     const unsubTurf = subscribeCollection<SportsTurfItem>('sports_turfs', (data) => {
-      if (data.length > 0) setSportsTurfItems(data);
+      if (data.length > 0) setSportsTurfItems((prev) => mergeFirestoreItems(data, prev));
     });
     const unsubNotif = subscribeCollection<AppNotification>('notifications', (data) => {
-      if (data.length > 0) setNotifications(data);
+      if (data.length > 0) setNotifications((prev) => mergeFirestoreItems(data, prev));
+    });
+    const unsubUsers = subscribeCollection<UserProfile>('users', (data) => {
+      if (data.length > 0) {
+        try {
+          const stored = localStorage.getItem('renthub_users_list');
+          const prevUsers = stored ? JSON.parse(stored) : [];
+          const merged = mergeFirestoreItems(data, prevUsers);
+          localStorage.setItem('renthub_users_list', JSON.stringify(merged));
+        } catch (e) {
+          // Sync handler note
+        }
+      }
+    });
+    const unsubJunior = subscribeCollection<JuniorAdmin>('junior_admins', (data) => {
+      if (data.length > 0) {
+        try {
+          localStorage.setItem('renthub_junior_admins', JSON.stringify(data));
+        } catch (e) {
+          // Sync handler note
+        }
+      }
     });
 
     return () => {
@@ -560,6 +615,8 @@ export default function App() {
       unsubCloth();
       unsubTurf();
       unsubNotif();
+      unsubUsers();
+      unsubJunior();
     };
   }, []);
 
@@ -585,6 +642,7 @@ export default function App() {
 
   useEffect(() => {
     localStorage.setItem('renthub_landlords', JSON.stringify(landlords));
+    localStorage.setItem('renthub_landlords_list', JSON.stringify(landlords));
   }, [landlords]);
 
   useEffect(() => {
@@ -607,35 +665,78 @@ export default function App() {
     localStorage.setItem('renthub_saved', JSON.stringify(savedIds));
   }, [savedIds]);
 
-  // Wishlist toggle for any category item
-  const toggleWishlist = (item: { id: string; title: string; category: string; location: string; city: string; image: string; priceDisplay: string }) => {
-    const exists = wishlist.some((w) => w.id === item.id);
-    if (exists) {
-      setWishlist((prev) => prev.filter((w) => w.id !== item.id));
-      deleteDocument('saved_items', item.id);
-    } else {
-      const newItem: WishlistItem = {
-        id: item.id,
-        itemId: item.id,
-        category: item.category as MainCategory,
-        title: item.title,
-        image: item.image,
-        location: item.location,
-        city: item.city,
-        priceDisplay: item.priceDisplay,
-        rating: 4.8,
-        savedAt: new Date().toISOString()
-      };
-      setWishlist((prev) => [newItem, ...prev]);
-      saveDocument('saved_items', newItem.id, newItem);
-    }
-    toggleSave(item.id);
+  const findAssetById = (id: string) => {
+    const p = properties.find((x) => x.id === id);
+    if (p) return { item: p, category: 'Property', title: p.title, image: p.images?.[0] || '', location: p.location, city: p.city, priceDisplay: `₹${p.rentPerMonth?.toLocaleString('en-IN')}/mo` };
+
+    const v = vehicles.find((x) => x.id === id);
+    if (v) return { item: v, category: 'Vehicle', title: v.title, image: v.images?.[0] || '', location: v.location, city: v.city, priceDisplay: `₹${v.pricePerDay?.toLocaleString('en-IN')}/day` };
+
+    const h = hotels.find((x) => x.id === id);
+    if (h) return { item: h, category: 'Hotel', title: h.title, image: h.images?.[0] || '', location: h.location, city: h.city, priceDisplay: `₹${h.rooms?.[0]?.pricePerNight?.toLocaleString('en-IN') || 2500}/night` };
+
+    const r = restaurants.find((x) => x.id === id);
+    if (r) return { item: r, category: 'Restaurant', title: r.title, image: r.images?.[0] || '', location: r.location, city: r.city, priceDisplay: `₹${r.averageCostForTwo?.toLocaleString('en-IN')}/for two` };
+
+    const l = libraries.find((x) => x.id === id);
+    if (l) return { item: l, category: 'Library', title: l.title, image: l.images?.[0] || '', location: l.location, city: l.city, priceDisplay: `₹${l.monthlyFee?.toLocaleString('en-IN') || 1200}/mo` };
+
+    const c = clothingItems.find((x) => x.id === id);
+    if (c) return { item: c, category: 'Clothing', title: c.title, image: c.images?.[0] || '', location: c.location, city: c.city, priceDisplay: `₹${c.rentPricePerDay?.toLocaleString('en-IN')}/day` };
+
+    const s = sportsTurfItems.find((x) => x.id === id);
+    if (s) return { item: s, category: 'Sports Turf', title: s.title, image: s.images?.[0] || '', location: s.location, city: s.city, priceDisplay: `₹${s.pricePerHour?.toLocaleString('en-IN')}/hr` };
+
+    const g = generalItems.find((x) => x.id === id);
+    if (g) return { item: g, category: 'Appliance', title: g.title, image: g.images?.[0] || g.image || '', location: g.location, city: g.city, priceDisplay: `₹${g.rentPerMonth?.toLocaleString('en-IN')}/mo` };
+
+    return null;
   };
 
   const toggleSave = (id: string) => {
+    const userEmailKey = currentUser && currentUser.email ? currentUser.email.toLowerCase().trim() : 'guest';
+
     setSavedIds((prev) =>
       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
     );
+
+    setWishlist((prev) => {
+      const exists = prev.some(
+        (w) => (w.itemId === id || w.id === id) && ((w.userEmail && w.userEmail.toLowerCase().trim() === userEmailKey) || (!w.userEmail && userEmailKey === 'guest'))
+      );
+
+      if (exists) {
+        deleteDocument('saved_items', `${userEmailKey}_${id}`);
+        return prev.filter(
+          (w) => !((w.itemId === id || w.id === id) && ((w.userEmail && w.userEmail.toLowerCase().trim() === userEmailKey) || (!w.userEmail && userEmailKey === 'guest')))
+        );
+      }
+
+      const assetData = findAssetById(id);
+      if (!assetData) return prev;
+
+      const newItem: WishlistItem = {
+        id: `${userEmailKey}_${id}`,
+        itemId: id,
+        userEmail: userEmailKey,
+        category: assetData.category as MainCategory,
+        title: assetData.title,
+        image: assetData.image,
+        location: assetData.location,
+        city: assetData.city,
+        priceDisplay: assetData.priceDisplay,
+        rating: 4.8,
+        savedAt: new Date().toISOString()
+      };
+
+      saveDocument('saved_items', newItem.id, newItem);
+      return [newItem, ...prev];
+    });
+  };
+
+  // Wishlist toggle for any category item
+  const toggleWishlist = (item: { id: string; title: string; category: string; location: string; city: string; image: string; priceDisplay: string }) => {
+    toggleSave(item.id);
   };
 
   // Landlord Add Property Handler
@@ -704,6 +805,29 @@ export default function App() {
       read: false
     };
     setNotifications((prev) => [notif, ...prev]);
+  };
+
+  // Landlord Add Commercial Appliance / Item Handler
+  const handleAddGeneralItem = (newItem: GeneralItem) => {
+    const taggedItem: GeneralItem = {
+      ...newItem,
+      ownerId: loggedInLandlord ? loggedInLandlord.id : (newItem.ownerId || 'owner-verified'),
+      ownerName: loggedInLandlord ? loggedInLandlord.name : (newItem.ownerName || 'Appliance Owner'),
+      status: 'Approved'
+    };
+    setGeneralItems((prev) => [taggedItem, ...prev]);
+    saveDocument('general_items', taggedItem.id, taggedItem);
+
+    const notif: AppNotification = {
+      id: `notif-${Date.now()}`,
+      title: '❄️ New Commercial Appliance Listed!',
+      message: `${newItem.title} is now live for rental booking.`,
+      type: 'system',
+      timestamp: 'Just now',
+      read: false
+    };
+    setNotifications((prev) => [notif, ...prev]);
+    saveDocument('notifications', notif.id, notif);
   };
 
   // Admin approval / rejection handlers
@@ -1255,6 +1379,7 @@ export default function App() {
       ownerId: item.ownerId || 'owner-1',
       deposit: item.deposit
     });
+    setSelectedGeneralItem(null);
   };
 
   const handleConfirmClothingBooking = (clothing: ClothingItem) => {
@@ -1311,12 +1436,52 @@ export default function App() {
     if (sel === 'room') return item.includes('room') || item.includes('single') || item.includes('shared');
     if (sel === 'villa') return item.includes('villa');
     if (sel === 'shop') return item.includes('shop') || item.includes('retail') || item.includes('showroom');
-    if (sel === 'office') return item.includes('office') || item.includes('co-working');
-    if (sel === 'bike' || sel === 'bicycle') return item.includes('bike') || item.includes('scooty') || item.includes('bicycle');
-    if (sel === 'scooter' || sel === 'scooty') return item.includes('scooty') || item.includes('scooter');
     if (sel === 'car') return item.includes('car');
 
     return item === sel || item.includes(sel) || sel.includes(item);
+  };
+
+  // Universal Smart Fuzzy Multi-term Search Matcher
+  const matchSearchQuery = (item: any, query: string): boolean => {
+    if (!query || !query.trim()) return true;
+    const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+
+    const searchableText = [
+      item.title,
+      item.location,
+      item.city,
+      item.address,
+      item.category,
+      item.subType,
+      item.propertyType,
+      item.bhk ? `${item.bhk} bhk` : '',
+      item.furnishing,
+      item.vehicleType,
+      item.brand,
+      item.modelName,
+      item.fuelType,
+      item.transmission,
+      item.clothingType,
+      item.gender,
+      item.color,
+      item.size,
+      item.turfType,
+      item.sportsAvailable ? (Array.isArray(item.sportsAvailable) ? item.sportsAvailable.join(' ') : item.sportsAvailable) : '',
+      item.itemCategory,
+      item.subCategory,
+      item.cuisine ? (Array.isArray(item.cuisine) ? item.cuisine.join(' ') : item.cuisine) : '',
+      item.amenities ? (Array.isArray(item.amenities) ? item.amenities.join(' ') : item.amenities) : '',
+      item.description,
+      item.nearbyCollege,
+      item.ownerName,
+      item.name,
+      item.preferredLocation
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+
+    return terms.every((term) => searchableText.includes(term));
   };
 
   // Filtered Properties Logic for Specific Selected View
@@ -1334,14 +1499,7 @@ export default function App() {
       }
     }
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = p.title.toLowerCase().includes(q);
-      const matchLoc = p.location.toLowerCase().includes(q);
-      const matchCity = p.city.toLowerCase().includes(q);
-      const matchCollege = p.nearbyCollege?.toLowerCase().includes(q);
-      if (!matchTitle && !matchLoc && !matchCity && !matchCollege) return false;
-    }
+    if (!matchSearchQuery(p, searchQuery)) return false;
 
     return true;
   });
@@ -1351,13 +1509,7 @@ export default function App() {
     if (p.category && p.category !== 'residential') return false;
     if (!isCityMatch(p.city)) return false;
     if (p.rentPerMonth > maxBudget) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = p.title.toLowerCase().includes(q);
-      const matchLoc = p.location.toLowerCase().includes(q);
-      const matchCity = p.city.toLowerCase().includes(q);
-      if (!matchTitle && !matchLoc && !matchCity) return false;
-    }
+    if (!matchSearchQuery(p, searchQuery)) return false;
     return true;
   });
 
@@ -1365,13 +1517,7 @@ export default function App() {
     if (p.category !== 'commercial') return false;
     if (!isCityMatch(p.city)) return false;
     if (p.rentPerMonth > maxBudget) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = p.title.toLowerCase().includes(q);
-      const matchLoc = p.location.toLowerCase().includes(q);
-      const matchCity = p.city.toLowerCase().includes(q);
-      if (!matchTitle && !matchLoc && !matchCity) return false;
-    }
+    if (!matchSearchQuery(p, searchQuery)) return false;
     return true;
   });
 
@@ -1379,39 +1525,21 @@ export default function App() {
     if (p.category !== 'student') return false;
     if (!isCityMatch(p.city)) return false;
     if (p.rentPerMonth > maxBudget) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = p.title.toLowerCase().includes(q);
-      const matchLoc = p.location.toLowerCase().includes(q);
-      const matchCity = p.city.toLowerCase().includes(q);
-      if (!matchTitle && !matchLoc && !matchCity) return false;
-    }
+    if (!matchSearchQuery(p, searchQuery)) return false;
     return true;
   });
 
   // Filtered Hotels
   const filteredHotels = hotels.filter((h) => {
     if (!isCityMatch(h.city)) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = h.title.toLowerCase().includes(q);
-      const matchLoc = h.location.toLowerCase().includes(q);
-      const matchCity = h.city.toLowerCase().includes(q);
-      if (!matchTitle && !matchLoc && !matchCity) return false;
-    }
+    if (!matchSearchQuery(h, searchQuery)) return false;
     return true;
   });
 
   // Filtered Restaurants
   const filteredRestaurants = restaurants.filter((r) => {
     if (!isCityMatch(r.city)) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = r.title.toLowerCase().includes(q);
-      const matchLoc = r.location.toLowerCase().includes(q);
-      const matchCuisine = r.cuisine.some((c) => c.toLowerCase().includes(q));
-      if (!matchTitle && !matchLoc && !matchCuisine) return false;
-    }
+    if (!matchSearchQuery(r, searchQuery)) return false;
     return true;
   });
 
@@ -1419,32 +1547,19 @@ export default function App() {
   const filteredLibraries = libraries.filter((l) => {
     if (!isCityMatch(l.city)) return false;
     if (selectedCollege !== 'ALL' && l.nearbyCollege && !l.nearbyCollege.toLowerCase().includes(selectedCollege.toLowerCase())) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = l.title.toLowerCase().includes(q);
-      const matchLoc = l.location.toLowerCase().includes(q);
-      const matchCollege = l.nearbyCollege?.toLowerCase().includes(q);
-      if (!matchTitle && !matchLoc && !matchCollege) return false;
-    }
+    if (!matchSearchQuery(l, searchQuery)) return false;
     return true;
   });
 
   // Filtered Vehicles Logic
   const filteredVehicles = vehicles.filter((v) => {
-    if (!v) return false;
+    if (v.status && v.status !== 'Approved') return false;
     if (!isSubTypeMatch(v.vehicleType, selectedSubType)) return false;
     if (!isCityMatch(v.city)) return false;
     if ((v.rentPerDay || 0) > maxBudget) return false;
     if (driverFilter && !v.driverAvailable) return false;
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = v.title?.toLowerCase().includes(q);
-      const matchBrand = v.brand?.toLowerCase().includes(q);
-      const matchModel = v.modelName?.toLowerCase().includes(q);
-      const matchLoc = v.location?.toLowerCase().includes(q);
-      if (!matchTitle && !matchBrand && !matchModel && !matchLoc) return false;
-    }
+    if (!matchSearchQuery(v, searchQuery)) return false;
 
     return true;
   });
@@ -1455,13 +1570,7 @@ export default function App() {
     if (!isCityMatch(item.city)) return false;
     if ((item.rentPerDay || 0) > maxBudget) return false;
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = item.title?.toLowerCase().includes(q);
-      const matchCategory = item.itemCategory?.toLowerCase().includes(q);
-      const matchLoc = item.location?.toLowerCase().includes(q);
-      if (!matchTitle && !matchCategory && !matchLoc) return false;
-    }
+    if (!matchSearchQuery(item, searchQuery)) return false;
 
     return true;
   });
@@ -1469,15 +1578,9 @@ export default function App() {
   // Filtered Clothing Items
   const filteredClothingItems = clothingItems.filter((item) => {
     if (!item) return false;
+    if (item.status && item.status !== 'Approved') return false;
     if (!isCityMatch(item.city)) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = item.title?.toLowerCase().includes(q);
-      const matchType = item.clothingType?.toLowerCase().includes(q);
-      const matchGender = item.gender?.toLowerCase().includes(q);
-      const matchLoc = item.location?.toLowerCase().includes(q);
-      if (!matchTitle && !matchType && !matchGender && !matchLoc) return false;
-    }
+    if (!matchSearchQuery(item, searchQuery)) return false;
     return true;
   });
 
@@ -1485,15 +1588,10 @@ export default function App() {
   const filteredSportsTurfs = sportsTurfItems.filter((turf) => {
     if (!turf) return false;
     if (!isCityMatch(turf.city)) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = turf.title?.toLowerCase().includes(q);
-      const matchType = turf.turfType?.toLowerCase().includes(q);
-      const matchLoc = turf.location?.toLowerCase().includes(q);
-      if (!matchTitle && !matchType && !matchLoc) return false;
-    }
+    if (!matchSearchQuery(turf, searchQuery)) return false;
     return true;
   });
+
   const filteredRoommates = roommates.filter((rm) => {
     if (rm.city && rm.city.toLowerCase() !== selectedCity.toLowerCase() && !isCityMatch(rm.preferredLocation)) return false;
     if (rm.budgetPerMonth > maxBudget) return false;
@@ -1502,13 +1600,7 @@ export default function App() {
     if (roommateGenderFilter !== 'ALL' && rm.gender.toLowerCase() !== roommateGenderFilter.toLowerCase()) return false;
     if (roommateDietFilter !== 'ALL' && rm.diet.toLowerCase() !== roommateDietFilter.toLowerCase()) return false;
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchName = rm.name.toLowerCase().includes(q);
-      const matchCollege = rm.college.toLowerCase().includes(q);
-      const matchLoc = rm.preferredLocation.toLowerCase().includes(q);
-      if (!matchName && !matchCollege && !matchLoc) return false;
-    }
+    if (!matchSearchQuery(rm, searchQuery)) return false;
 
     return true;
   });
@@ -1536,7 +1628,7 @@ export default function App() {
         onToggleTheme={(t) => setCurrentTheme(t)}
         onOpenAIModal={() => setIsAIModalOpen(true)}
         onOpenLandlordModal={handleOpenLandlordListingModal}
-        savedCount={wishlist.length}
+        savedCount={activeUserWishlist.length}
         onOpenSavedModal={() => setIsSavedModalOpen(true)}
         onOpenAdminModal={() => setIsAdminModalOpen(true)}
         onOpenLandlordAuthModal={() => {
@@ -1554,6 +1646,17 @@ export default function App() {
         onOpenRadarModal={() => setIsRadarModalOpen(true)}
         onOpenFeedbackModal={() => setIsFeedbackModalOpen(true)}
         notifications={activeUserNotifications}
+        onDeleteNotification={async (id) => {
+          setNotifications((prev) => prev.filter((n) => n.id !== id));
+          await deleteDocument('notifications', id);
+        }}
+        onClearAllNotifications={async () => {
+          const userNotifIds = activeUserNotifications.map((n) => n.id);
+          setNotifications((prev) => prev.filter((n) => !userNotifIds.includes(n.id)));
+          for (const id of userNotifIds) {
+            await deleteDocument('notifications', id);
+          }
+        }}
         onMarkNotificationsRead={() => {
           if (!currentUser && !loggedInLandlord) return;
           const activeIds = new Set(activeUserNotifications.map((n) => n.id));
@@ -1561,21 +1664,20 @@ export default function App() {
             prev.map((n) => (activeIds.has(n.id) ? { ...n, read: true } : n))
           );
         }}
+        onOpenSplitBillModal={() => setIsSplitBillModalOpen(true)}
+        onOpenMaintenanceModal={() => setIsMaintenanceModalOpen(true)}
       />
 
       {/* Mode-based Content View */}
       {activeMode === 'bookings' ? (
-        <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6 lg:pt-8 pb-24 lg:pb-12">
           <MyBookingsSection
             bookings={userBookings}
             currentUser={currentUser}
             onOpenUserAuthModal={() => setIsUserAuthModalOpen(true)}
             onOpenReceipt={(b) => setActiveBookingReceipt(b)}
-            onOpenTracking={(b) => {
-              const veh = vehicles.find((v) => v.id === b.itemId);
-              if (veh) setTrackingVehicle(veh);
-            }}
             onOpenChat={(b) => setActiveBookingChat({ booking: b, role: 'renter' })}
+            onOpenVehicleInspection={(b, mode) => setActiveVehicleInspection({ booking: b, mode })}
             onCancelBooking={handleCancelBooking}
             onDeleteBooking={handleCancelBooking}
             onNavigateToRentStore={() => setActiveMode('rent')}
@@ -1607,7 +1709,7 @@ export default function App() {
           />
 
           {/* Main Content Area */}
-          <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+          <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-6 lg:pt-8 pb-24 lg:pb-12 space-y-8">
         
         {/* Sleek Trust Highlights Bar */}
         <div
@@ -1704,18 +1806,19 @@ export default function App() {
               onSelectLibrary={(l) => setSelectedLibrary(l)}
               onSelectClothing={(c) => handleConfirmClothingBooking(c)}
               onBookClothing={(c) => handleConfirmClothingBooking(c)}
-              onSelectSportsTurf={(t) => handleConfirmSportsTurfBooking(t)}
-              onBookSportsTurf={(t) => handleConfirmSportsTurfBooking(t)}
+              onSelectSportsTurf={(t) => setBookingSportsTurf(t)}
+              onBookSportsTurf={(t) => setBookingSportsTurf(t)}
               onSelectGeneralItem={(g) => setSelectedGeneralItem(g)}
               onBookGeneralItem={(g) => setSelectedGeneralItem(g)}
               onOpenDirections={(item) => setMapItem(item)}
               onOpenChat={(item) => setActiveDirectChatContext(item)}
-              savedIds={savedIds}
-              wishlist={wishlist}
+              savedIds={activeUserSavedIds}
+              wishlist={activeUserWishlist}
               toggleSave={toggleSave}
               toggleWishlist={toggleWishlist}
               loggedInLandlord={loggedInLandlord}
               onTrackGPS={(v) => setTrackingVehicle(v)}
+              onReserveRestaurant={(r) => setReservingRestaurant(r)}
             />
           ) : activeCategory === 'clothing' ? (
               /* Clothing & Wedding Attire Grid */
@@ -1752,7 +1855,7 @@ export default function App() {
                         index={idx}
                         onSelect={(c) => handleConfirmClothingBooking(c)}
                         onBook={(c) => handleConfirmClothingBooking(c)}
-                        isSaved={savedIds.includes(clothing.id)}
+                        isSaved={activeUserSavedIds.includes(clothing.id)}
                         onToggleSave={toggleSave}
                       />
                     ))}
@@ -1792,9 +1895,9 @@ export default function App() {
                         key={turf.id}
                         turf={turf}
                         index={idx}
-                        onSelect={(t) => handleConfirmSportsTurfBooking(t)}
-                        onBook={(t) => handleConfirmSportsTurfBooking(t)}
-                        isSaved={savedIds.includes(turf.id)}
+                        onSelect={(t) => setBookingSportsTurf(t)}
+                        onBook={(t) => setBookingSportsTurf(t)}
+                        isSaved={activeUserSavedIds.includes(turf.id)}
                         onToggleSave={toggleSave}
                       />
                     ))}
@@ -1856,7 +1959,7 @@ export default function App() {
                       restaurant={restaurant}
                       index={idx}
                       onSelect={(r) => setSelectedRestaurant(r)}
-                      onReserve={(r) => setSelectedRestaurant(r)}
+                      onReserve={(r) => setReservingRestaurant(r)}
                       onOpenDirections={(r) => setMapItem(r)}
                       isWishlisted={wishlist.some((w) => w.id === restaurant.id)}
                       onToggleWishlist={(r) =>
@@ -1957,7 +2060,7 @@ export default function App() {
                               alert('🔒 GPS Live Tracking is strictly restricted to the registered owner of this vehicle.');
                             }
                           }}
-                          isSaved={savedIds.includes(vehicle.id)}
+                          isSaved={activeUserSavedIds.includes(vehicle.id)}
                           onToggleSave={toggleSave}
                           onOpenChat={(item) => setActiveDirectChatContext(item)}
                         />
@@ -2002,7 +2105,7 @@ export default function App() {
                         index={idx}
                         onSelect={(i) => setSelectedGeneralItem(i)}
                         onBook={(i) => handleConfirmGeneralItemBooking(i)}
-                        isSaved={savedIds.includes(item.id)}
+                        isSaved={activeUserSavedIds.includes(item.id)}
                         onToggleSave={toggleSave}
                       />
                     ))}
@@ -2166,7 +2269,7 @@ export default function App() {
                         property={property}
                         index={idx}
                         onSelect={(p) => setSelectedProperty(p)}
-                        isSaved={savedIds.includes(property.id)}
+                        isSaved={activeUserSavedIds.includes(property.id)}
                         onToggleSave={toggleSave}
                         onQuickBook={(p) => handleConfirmPropertyBooking(p)}
                       />
@@ -2222,6 +2325,7 @@ export default function App() {
         onAddVehicle={handleAddVehicle}
         onAddClothing={handleAddClothing}
         onAddSportsTurf={handleAddSportsTurf}
+        onAddGeneralItem={handleAddGeneralItem}
         loggedInLandlord={loggedInLandlord}
       />
 
@@ -2230,7 +2334,7 @@ export default function App() {
         allProperties={properties}
         onClose={() => setSelectedProperty(null)}
         onConfirmBooking={handleConfirmPropertyBooking}
-        isSaved={selectedProperty ? savedIds.includes(selectedProperty.id) : false}
+        isSaved={selectedProperty ? activeUserSavedIds.includes(selectedProperty.id) : false}
         onToggleSave={toggleSave}
         onSelectSimilarProperty={(p) => setSelectedProperty(p)}
         onOpenChat={(p) => {
@@ -2264,10 +2368,36 @@ export default function App() {
         <RestaurantDetailModal
           restaurant={selectedRestaurant}
           onClose={() => setSelectedRestaurant(null)}
-          onConfirmReservation={handleConfirmRestaurantReservation}
+          onConfirmReservation={(resDetails) => {
+            setSelectedRestaurant(null);
+            setReservingRestaurant(resDetails.restaurant);
+          }}
           onOpenMap={(r) => setMapItem(r)}
         />
       )}
+
+      {/* Dedicated Restaurant Table Reservation Modal */}
+      <RestaurantTableReservationModal
+        isOpen={!!reservingRestaurant}
+        onClose={() => setReservingRestaurant(null)}
+        restaurant={reservingRestaurant}
+        currentUserEmail={currentUser?.email}
+        currentUserName={currentUser?.name}
+        onBookingConfirmed={(booking) => {
+          setBookings((prev) => [booking, ...prev]);
+        }}
+      />
+      {/* Dedicated Sports Turf Ground Slot Booking Modal */}
+      <SportsTurfBookingModal
+        isOpen={!!bookingSportsTurf}
+        onClose={() => setBookingSportsTurf(null)}
+        turf={bookingSportsTurf}
+        currentUserEmail={currentUser?.email}
+        currentUserName={currentUser?.name}
+        onBookingConfirmed={(booking) => {
+          setBookings((prev) => [booking, ...prev]);
+        }}
+      />
 
       {/* Library Detail Modal */}
       {selectedLibrary && (
@@ -2290,11 +2420,14 @@ export default function App() {
       {/* Wishlist Modal */}
       {isSavedModalOpen && (
         <WishlistModal
-          wishlist={wishlist}
+          wishlist={activeUserWishlist}
           onClose={() => setIsSavedModalOpen(false)}
           onRemoveItem={(id) => {
-            setWishlist((prev) => prev.filter((w) => w.id !== id));
+            const userKey = currentUser ? currentUser.email.toLowerCase().trim() : 'guest';
+            setWishlist((prev) => prev.filter((w) => w.id !== id && w.itemId !== id && `${userKey}_${w.itemId}` !== id));
             setSavedIds((prev) => prev.filter((i) => i !== id));
+            deleteDocument('saved_items', `${userKey}_${id}`);
+            deleteDocument('saved_items', id);
           }}
           onViewItem={(item) => {
             setIsSavedModalOpen(false);
@@ -2355,15 +2488,31 @@ export default function App() {
         onUpdateBookingStatus={handleUpdateBookingStatus}
         onEditProperty={(p) => handleOpenEdit(p, 'property')}
         onEditVehicle={(v) => handleOpenEdit(v, 'vehicle')}
+        onDeleteProperty={handleDeleteProperty}
+        onDeleteVehicle={handleDeleteVehicle}
         onTrackVehicleGPS={(b) => {
-          const veh = vehicles.find((v) => v.id === b.itemId);
-          if (veh) {
-            if (loggedInLandlord && (loggedInLandlord.id === veh.ownerId || veh.ownerId === 'owner-verified')) {
-              setTrackingVehicle(veh);
-            } else {
-              alert('🔒 GPS Live Tracking is strictly restricted to the registered owner of this vehicle.');
-            }
-          }
+          const veh = vehicles.find((v) => v.id === b.itemId) || {
+            id: b.itemId,
+            title: b.itemTitle,
+            vehicleType: 'Car',
+            brand: 'Vehicle',
+            modelName: b.itemTitle,
+            year: 2024,
+            rentPerDay: b.totalPrice || 1500,
+            rentPerHour: 150,
+            deposit: 2000,
+            location: 'Live GPS Telematics',
+            city: 'Udaipur',
+            images: [b.itemImage || 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=800&q=80'],
+            fuelType: 'Petrol',
+            isGPSAvailable: true,
+            currentLat: 24.5854,
+            currentLng: 73.7125,
+            speedKmh: 45,
+            fuelLevelPercent: 88,
+            licensePlate: 'RJ 27 AB 1234'
+          };
+          setTrackingVehicle(veh as Vehicle);
         }}
         onOpenBookingChat={(booking) => setActiveBookingChat({ booking, role: 'owner' })}
         onDeleteLandlordAccount={handleDeleteLandlordAccount}
@@ -2475,7 +2624,7 @@ export default function App() {
         item={selectedGeneralItem}
         onClose={() => setSelectedGeneralItem(null)}
         onBook={(item) => handleConfirmGeneralItemBooking(item)}
-        isSaved={selectedGeneralItem ? savedIds.includes(selectedGeneralItem.id) : false}
+        isSaved={selectedGeneralItem ? activeUserSavedIds.includes(selectedGeneralItem.id) : false}
         onToggleSave={toggleSave}
       />
 
@@ -2553,6 +2702,45 @@ export default function App() {
         itemContext={activeDirectChatContext}
         currentRole={activeBookingChat?.role || 'renter'}
         userName={currentUser?.name || 'Renter'}
+      />
+
+      {/* Digital Vehicle Inspection & Return Settlement Modal */}
+      <VehicleInspectionModal
+        booking={activeVehicleInspection?.booking || null}
+        mode={activeVehicleInspection?.mode || 'pickup'}
+        onClose={() => setActiveVehicleInspection(null)}
+        onSaveInspection={(updatedBooking) => {
+          setBookings((prev) => prev.map((b) => b.id === updatedBooking.id ? updatedBooking : b));
+          saveDocument('bookings', updatedBooking.id, updatedBooking);
+        }}
+      />
+
+      {/* 1. Roommate Split-Bill Calculator Modal */}
+      <SplitBillCalculatorModal
+        isOpen={isSplitBillModalOpen}
+        onClose={() => setIsSplitBillModalOpen(false)}
+      />
+
+      {/* 2. Maintenance Ticket & Repair Request Portal Modal */}
+      <MaintenanceTicketModal
+        isOpen={isMaintenanceModalOpen}
+        onClose={() => setIsMaintenanceModalOpen(false)}
+        userBookings={userBookings}
+        currentUserEmail={currentUser?.email}
+        currentUserName={currentUser?.name}
+        loggedInLandlord={loggedInLandlord}
+      />
+
+      {/* 3. Mobile Glassmorphism Quick-Action Floating Navigation Dock */}
+      <BottomNavDock
+        onOpenAIModal={() => setIsAIModalOpen(true)}
+        onOpenRadar={() => setIsRadarOpen(true)}
+        onOpenWishlist={() => setIsWishlistOpen(true)}
+        onOpenListProperty={() => {
+          if (!loggedInLandlord) setIsLandlordAuthOpen(true);
+          else setIsListingModalOpen(true);
+        }}
+        wishlistCount={wishlist.length}
       />
 
     </div>

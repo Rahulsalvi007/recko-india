@@ -23,7 +23,7 @@ import {
 import { LandlordUser } from '../types';
 import { EmailVerificationModal } from './EmailVerificationModal';
 import { ForgotPasswordModal } from './ForgotPasswordModal';
-import { loginWithEmailPassword, registerWithEmailPassword, loginWithGoogle } from '../lib/firebase';
+import { loginWithEmailPassword, registerWithEmailPassword, loginWithGoogle, saveDocument } from '../lib/firebase';
 
 interface LandlordAuthModalProps {
   isOpen: boolean;
@@ -202,6 +202,13 @@ export const LandlordAuthModal: React.FC<LandlordAuthModalProps> = ({
       status: 'Pending',
       requestedAt: new Date().toISOString().split('T')[0]
     };
+
+    // Save Landlord / Owner registration application to Firebase Cloud Firestore
+    try {
+      await saveDocument('landlords', newUser.id, newUser);
+    } catch (fbErr) {
+      console.warn('Firebase landlord registration save note:', fbErr);
+    }
 
     setPendingLandlord(newUser);
     setVerifyMode('register');

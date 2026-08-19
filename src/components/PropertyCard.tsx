@@ -84,11 +84,18 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
           )}
         </div>
 
-        {/* Rating Badge */}
-        <div className="absolute bottom-3.5 left-3.5 bg-slate-950/90 text-white text-xs font-black px-3 py-1.5 rounded-xl flex items-center space-x-1.5 backdrop-blur-md border border-white/10 shadow-lg">
-          <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />
-          <span>{property.rating}</span>
-          <span className="text-slate-400 font-semibold">({property.reviewsCount})</span>
+        {/* Rating Badge & Photo Count */}
+        <div className="absolute bottom-3.5 left-3.5 right-3.5 flex items-center justify-between pointer-events-none">
+          <div className="bg-slate-950/90 text-white text-xs font-black px-3 py-1.5 rounded-xl flex items-center space-x-1.5 backdrop-blur-md border border-white/10 shadow-lg pointer-events-auto">
+            <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />
+            <span>{property.rating}</span>
+            <span className="text-slate-400 font-semibold">({property.reviewsCount})</span>
+          </div>
+
+          <div className="flex items-center space-x-1.5 bg-slate-950/90 text-white text-[11px] font-extrabold px-2.5 py-1.5 rounded-xl backdrop-blur-md border border-white/10 shadow-lg pointer-events-auto">
+            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>{property.images?.length || 1} Photos</span>
+          </div>
         </div>
       </div>
 

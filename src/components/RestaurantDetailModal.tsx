@@ -51,26 +51,26 @@ export const RestaurantDetailModal: React.FC<RestaurantDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#FAF7F2] dark:bg-zinc-950 text-slate-900 dark:text-white overflow-y-auto w-full h-full min-h-screen">
+    <div className="fixed inset-0 z-50 bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-white overflow-y-auto w-full h-full min-h-screen">
       <div className="w-full min-h-screen flex flex-col">
         
         {/* Header Bar */}
-        <div className="bg-[#0C1017] text-[#FAF7F2] p-5 sm:p-6 flex justify-between items-center border-b border-slate-800 sticky top-0 z-40 shadow-md">
+        <div className="bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md text-slate-900 dark:text-white p-5 sm:p-6 flex justify-between items-center border-b border-slate-200 dark:border-zinc-800 sticky top-0 z-40 shadow-xs">
           <div className="flex items-center space-x-3">
             <button
               onClick={onClose}
-              className="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer border border-slate-700"
+              className="flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-800 dark:text-zinc-200 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer border border-slate-200 dark:border-zinc-700"
             >
               <X className="h-4 w-4" />
               <span>← Back to Dining</span>
             </button>
             <div>
-              <h2 className="text-xl sm:text-2xl font-black">{restaurant.title}</h2>
-              <div className="flex items-center space-x-2 text-slate-300 text-xs font-semibold mt-0.5">
-                <MapPin className="h-3.5 w-3.5 text-amber-300 shrink-0" />
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{restaurant.title}</h2>
+              <div className="flex items-center space-x-2 text-slate-500 dark:text-zinc-400 text-xs font-semibold mt-0.5">
+                <MapPin className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
                 <span>{restaurant.location}, {restaurant.city}</span>
                 <span>•</span>
-                <div className="flex items-center space-x-1 text-amber-400 font-bold">
+                <div className="flex items-center space-x-1 text-amber-500 dark:text-amber-400 font-bold">
                   <Star className="h-3.5 w-3.5 fill-current" />
                   <span>{restaurant.rating} ({restaurant.reviewsCount} reviews)</span>
                 </div>
@@ -80,37 +80,37 @@ export const RestaurantDetailModal: React.FC<RestaurantDetailModalProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="p-5 sm:p-8 space-y-6 max-h-[75vh] overflow-y-auto text-slate-900">
+        <div className="p-5 sm:p-8 space-y-6 max-h-[75vh] overflow-y-auto text-slate-900 dark:text-white">
           
           {/* Images & Quick Stats */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-2 h-60 rounded-2xl overflow-hidden bg-slate-900">
+            <div className="sm:col-span-2 h-60 rounded-2xl overflow-hidden bg-slate-100 dark:bg-zinc-900">
               <img src={restaurant.images[0]} alt={restaurant.title} className="w-full h-full object-cover" />
             </div>
-            <div className="bg-white p-5 rounded-2xl border border-[#E5E0D8] flex flex-col justify-between">
+            <div className="bg-white dark:bg-zinc-900 p-5 rounded-2xl border border-slate-200 dark:border-zinc-800 flex flex-col justify-between shadow-xs">
               <div>
                 <span className="text-xs font-extrabold text-slate-400 uppercase tracking-wider block">Average Cost</span>
-                <p className="text-2xl font-black text-slate-950 mt-0.5">₹{restaurant.averageCostForTwo} <span className="text-xs text-slate-500 font-medium">for two</span></p>
+                <p className="text-2xl font-black text-slate-950 dark:text-white mt-0.5">₹{restaurant.averageCostForTwo} <span className="text-xs text-slate-500 font-medium">for two</span></p>
               </div>
 
               <div className="my-3">
                 <span className="text-xs font-extrabold text-slate-400 uppercase tracking-wider block">Opening Hours</span>
-                <p className="text-xs font-bold text-slate-800 mt-0.5">{restaurant.openingHours}</p>
+                <p className="text-xs font-bold text-slate-800 dark:text-zinc-200 mt-0.5">{restaurant.openingHours}</p>
               </div>
 
               <button
                 onClick={() => onOpenMap(restaurant)}
-                className="w-full bg-[#151B26] hover:bg-black text-[#FAF7F2] font-black text-xs py-2.5 rounded-xl transition-all flex items-center justify-center space-x-1.5"
+                className="w-full bg-slate-950 hover:bg-slate-900 dark:bg-blue-600 dark:hover:bg-blue-500 text-white font-black text-xs py-2.5 rounded-xl transition-all flex items-center justify-center space-x-1.5 shadow-sm"
               >
-                <Navigation className="h-4 w-4 text-amber-300" />
+                <Navigation className="h-4 w-4" />
                 <span>View Directions</span>
               </button>
             </div>
           </div>
 
           {/* Table Reservation Box */}
-          <div className="bg-[#151B26] text-[#FAF7F2] p-5 rounded-3xl border border-slate-800 space-y-4">
-            <h3 className="text-sm font-black text-amber-200 uppercase tracking-wider flex items-center space-x-2">
+          <div className="bg-slate-900 dark:bg-zinc-900 text-white p-5 rounded-3xl border border-slate-800 dark:border-zinc-800 space-y-4">
+            <h3 className="text-sm font-black text-blue-400 uppercase tracking-wider flex items-center space-x-2">
               <Calendar className="h-4 w-4" />
               <span>Instant Table Reservation</span>
             </h3>
@@ -122,7 +122,7 @@ export const RestaurantDetailModal: React.FC<RestaurantDetailModalProps> = ({
                   type="date"
                   value={reservationDate}
                   onChange={(e) => setReservationDate(e.target.value)}
-                  className="w-full bg-[#222B3B] border border-slate-700 rounded-xl px-3 py-2 text-xs font-extrabold text-white outline-none focus:ring-2 focus:ring-amber-300"
+                  className="w-full bg-slate-800 dark:bg-zinc-800 border border-slate-700 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs font-extrabold text-white outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -131,7 +131,7 @@ export const RestaurantDetailModal: React.FC<RestaurantDetailModalProps> = ({
                 <select
                   value={reservationTime}
                   onChange={(e) => setReservationTime(e.target.value)}
-                  className="w-full bg-[#222B3B] border border-slate-700 rounded-xl px-3 py-2 text-xs font-extrabold text-white outline-none focus:ring-2 focus:ring-amber-300"
+                  className="w-full bg-slate-800 dark:bg-zinc-800 border border-slate-700 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs font-extrabold text-white outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="01:00 PM">01:00 PM (Lunch)</option>
                   <option value="02:30 PM">02:30 PM (Lunch)</option>
@@ -146,7 +146,7 @@ export const RestaurantDetailModal: React.FC<RestaurantDetailModalProps> = ({
                 <select
                   value={guestsCount}
                   onChange={(e) => setGuestsCount(Number(e.target.value))}
-                  className="w-full bg-[#222B3B] border border-slate-700 rounded-xl px-3 py-2 text-xs font-extrabold text-white outline-none focus:ring-2 focus:ring-amber-300"
+                  className="w-full bg-slate-800 dark:bg-zinc-800 border border-slate-700 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs font-extrabold text-white outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value={2}>2 Guests</option>
                   <option value={4}>4 Guests</option>
@@ -160,7 +160,7 @@ export const RestaurantDetailModal: React.FC<RestaurantDetailModalProps> = ({
                 <select
                   value={selectedTable}
                   onChange={(e) => setSelectedTable(e.target.value)}
-                  className="w-full bg-[#222B3B] border border-slate-700 rounded-xl px-3 py-2 text-xs font-extrabold text-white outline-none focus:ring-2 focus:ring-amber-300"
+                  className="w-full bg-slate-800 dark:bg-zinc-800 border border-slate-700 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs font-extrabold text-white outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {restaurant.tableTypes.map((tt, i) => (
                     <option key={i} value={tt}>{tt}</option>
@@ -175,12 +175,12 @@ export const RestaurantDetailModal: React.FC<RestaurantDetailModalProps> = ({
                 placeholder="Special Notes (e.g., Birthday Candle, Quiet Corner)..."
                 value={specialRequest}
                 onChange={(e) => setSpecialRequest(e.target.value)}
-                className="w-full sm:flex-1 bg-[#222B3B] border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-400 outline-none"
+                className="w-full sm:flex-1 bg-slate-800 dark:bg-zinc-800 border border-slate-700 dark:border-zinc-700 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-400 outline-none"
               />
 
               <button
                 onClick={handleReserve}
-                className="w-full sm:w-auto bg-[#FAF7F2] hover:bg-white text-slate-950 font-black text-sm px-8 py-2.5 rounded-xl transition-all cursor-pointer shadow-lg"
+                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-black text-sm px-8 py-2.5 rounded-xl transition-all cursor-pointer shadow-lg border border-blue-400"
               >
                 Reserve Table Now
               </button>

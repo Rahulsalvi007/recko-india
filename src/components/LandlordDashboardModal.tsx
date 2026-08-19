@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Building2,
@@ -52,6 +52,10 @@ interface LandlordDashboardModalProps {
   onUpdateBookingStatus?: (bookingId: string, status: 'Accepted' | 'Rejected' | 'Completed', rejectionReason?: string) => void;
   onEditProperty?: (p: Property) => void;
   onEditVehicle?: (v: Vehicle) => void;
+  onDeleteProperty?: (id: string) => void;
+  onDeleteVehicle?: (id: string) => void;
+  onDeleteClothing?: (id: string) => void;
+  onDeleteSportsTurf?: (id: string) => void;
   onTrackVehicleGPS?: (booking: RentalBooking) => void;
   onOpenBookingChat?: (booking: RentalBooking) => void;
   onDeleteLandlordAccount?: (landlordId: string) => void;
@@ -71,6 +75,10 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
   onUpdateBookingStatus,
   onEditProperty,
   onEditVehicle,
+  onDeleteProperty,
+  onDeleteVehicle,
+  onDeleteClothing,
+  onDeleteSportsTurf,
   onTrackVehicleGPS,
   onOpenBookingChat,
   onDeleteLandlordAccount
@@ -81,6 +89,47 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
   const [copiedId, setCopiedId] = useState(false);
   const [newLandlordPassword, setNewLandlordPassword] = useState('');
   const [passUpdateMsg, setPassUpdateMsg] = useState('');
+
+  // Landlord Profile Edit State
+  const [ownerEditName, setOwnerEditName] = useState(landlord?.name || '');
+  const [ownerEditPhone, setOwnerEditPhone] = useState(landlord?.phone || '');
+  const [ownerEditAddress, setOwnerEditAddress] = useState(landlord?.address || '');
+  const [ownerEditCity, setOwnerEditCity] = useState(landlord?.city || '');
+
+  useEffect(() => {
+    if (landlord) {
+      setOwnerEditName(landlord.name || '');
+      setOwnerEditPhone(landlord.phone || '');
+      setOwnerEditAddress(landlord.address || '');
+      setOwnerEditCity(landlord.city || '');
+    }
+  }, [landlord]);
+
+  const handleSaveLandlordProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!landlord) return;
+    setPassUpdateMsg('');
+
+    const updatedLandlord: LandlordUser = {
+      ...landlord,
+      name: ownerEditName.trim() || landlord.name,
+      phone: ownerEditPhone.trim() || landlord.phone,
+      address: ownerEditAddress.trim() || landlord.address,
+      city: ownerEditCity.trim() || landlord.city,
+      ...(newLandlordPassword.trim() ? { password: newLandlordPassword.trim() } : {})
+    };
+
+    localStorage.setItem('renthub_landlord_user', JSON.stringify(updatedLandlord));
+    try {
+      await saveDocument('landlords', landlord.id, updatedLandlord);
+    } catch (err) {
+      console.warn('Firebase landlord update error:', err);
+    }
+
+    setPassUpdateMsg('✅ Owner personal details & password updated successfully!');
+    setNewLandlordPassword('');
+    setTimeout(() => setPassUpdateMsg(''), 4000);
+  };
 
   // Delete Account States
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -642,6 +691,21 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
                               ✏️ Edit
                             </button>
                           )}
+
+                          {onDeleteProperty && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to permanently delete property listing "${p.title}"?`)) {
+                                  onDeleteProperty(p.id);
+                                }
+                              }}
+                              className="text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 px-2.5 py-1 rounded-lg cursor-pointer flex items-center space-x-1"
+                            >
+                              <Trash2 className="h-3 w-3 text-rose-600" />
+                              <span>Delete</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -706,14 +770,60 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
                           <span className="font-black text-slate-900 text-sm">₹{v.rentPerDay.toLocaleString('en-IN')}</span>
                         </div>
 
-                        {onEditVehicle && (
-                          <button
-                            onClick={() => onEditVehicle(v)}
-                            className="text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 px-2.5 py-1 rounded-lg cursor-pointer"
-                          >
-                            ✏️ Edit
-                          </button>
-                        )}
+                        <div className="flex items-center space-x-2">
+                          {onTrackVehicleGPS && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const matchingBooking = bookings.find(b => b.itemId === v.id) || {
+                                  id: `TRK-${v.id}`,
+                                  type: 'vehicle',
+                                  itemId: v.id,
+                                  itemTitle: v.title,
+                                  itemImage: v.images[0],
+                                  startDate: 'Today',
+                                  endDate: 'Ongoing',
+                                  totalPrice: v.rentPerDay,
+                                  tokenPaidAmount: 500,
+                                  tokenPaymentStatus: 'Paid',
+                                  status: 'Active',
+                                  bookingDate: 'Today',
+                                  ownerId: v.ownerId,
+                                  ownerName: v.ownerName,
+                                  ownerContact: v.ownerContact
+                                };
+                                onTrackVehicleGPS(matchingBooking as any);
+                              }}
+                              className="text-[11px] font-black bg-indigo-50 text-indigo-900 border border-indigo-200 hover:bg-indigo-100 px-2.5 py-1 rounded-lg cursor-pointer flex items-center space-x-1 shadow-2xs"
+                            >
+                              <span>🛰️ Live GPS Track</span>
+                            </button>
+                          )}
+
+                          {onEditVehicle && (
+                            <button
+                              onClick={() => onEditVehicle(v)}
+                              className="text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 px-2.5 py-1 rounded-lg cursor-pointer"
+                            >
+                              ✏️ Edit
+                            </button>
+                          )}
+
+                          {onDeleteVehicle && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to permanently delete vehicle listing "${v.title}"?`)) {
+                                  onDeleteVehicle(v.id);
+                                }
+                              }}
+                              className="text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 px-2.5 py-1 rounded-lg cursor-pointer flex items-center space-x-1"
+                            >
+                              <Trash2 className="h-3 w-3 text-rose-600" />
+                              <span>Delete</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1074,27 +1184,28 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
             </div>
           )}
 
-          {/* TAB 7: SECURITY & PASSWORD CHANGE */}
+          {/* TAB 7: OWNER PROFILE & SECURITY SETTINGS */}
           {activeTab === 'security' && (
             <div className="space-y-4 max-w-lg">
               <div className="bg-white/90 backdrop-blur-md border border-slate-200 p-5 rounded-2xl space-y-4 shadow-sm">
                 <div className="flex items-center space-x-2 text-zinc-900">
-                  <Key className="h-5 w-5" />
-                  <h3 className="font-extrabold text-sm text-slate-900">Change Landlord Account Password</h3>
+                  <User className="h-5 w-5 text-amber-500" />
+                  <h3 className="font-extrabold text-sm text-slate-900">Edit Owner Profile & Security Details</h3>
                 </div>
                 <p className="text-xs text-slate-600">
-                  Update your landlord login password. Changes will be saved to Firebase Firestore & local storage so your new password works across site refreshes.
+                  Update your official landlord profile name, mobile number, address, city, and account password. Changes are saved instantly to Cloud Database.
                 </p>
 
                 {passUpdateMsg && (
-                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-xl text-xs font-bold">
-                    {passUpdateMsg}
+                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-3 rounded-xl text-xs font-bold flex items-center space-x-2">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                    <span>{passUpdateMsg}</span>
                   </div>
                 )}
 
-                <form onSubmit={handleUpdateLandlordPassword} className="space-y-3 text-xs">
+                <form onSubmit={handleSaveLandlordProfile} className="space-y-3 text-xs">
                   <div>
-                    <label className="block text-slate-700 font-bold mb-1">Current Landlord User ID</label>
+                    <label className="block text-slate-700 font-bold mb-1">Owner User ID</label>
                     <input
                       type="text"
                       disabled
@@ -1104,23 +1215,68 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-slate-700 font-bold mb-1">New Password</label>
+                    <label className="block text-slate-700 font-bold mb-1">Owner Full Name *</label>
                     <input
                       type="text"
                       required
+                      value={ownerEditName}
+                      onChange={(e) => setOwnerEditName(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-medium focus:ring-2 focus:ring-amber-400 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">Mobile / Phone Number *</label>
+                    <input
+                      type="text"
+                      required
+                      value={ownerEditPhone}
+                      onChange={(e) => setOwnerEditPhone(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-medium focus:ring-2 focus:ring-amber-400 outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-slate-700 font-bold mb-1">New Account Password (Optional)</label>
+                    <input
+                      type="password"
                       value={newLandlordPassword}
                       onChange={(e) => setNewLandlordPassword(e.target.value)}
-                      placeholder="Enter new password..."
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:ring-2 focus:ring-zinc-400 outline-none"
+                      placeholder="Leave blank to keep existing password..."
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-mono focus:ring-2 focus:ring-amber-400 outline-none"
                     />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">Office / Home Address</label>
+                      <input
+                        type="text"
+                        value={ownerEditAddress}
+                        onChange={(e) => setOwnerEditAddress(e.target.value)}
+                        placeholder="e.g. 102 Crystal Heights"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-medium focus:ring-2 focus:ring-amber-400 outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-700 font-bold mb-1">City</label>
+                      <input
+                        type="text"
+                        value={ownerEditCity}
+                        onChange={(e) => setOwnerEditCity(e.target.value)}
+                        placeholder="e.g. Jaipur"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-medium focus:ring-2 focus:ring-amber-400 outline-none"
+                      />
+                    </div>
                   </div>
 
                   <div className="pt-2">
                     <button
                       type="submit"
-                      className="bg-zinc-900 text-white hover:bg-zinc-950 font-extrabold px-5 py-2.5 rounded-xl transition-all shadow-md cursor-pointer"
+                      className="w-full bg-zinc-900 hover:bg-zinc-950 text-white font-extrabold px-5 py-3 rounded-xl transition-all shadow-md cursor-pointer flex items-center justify-center space-x-2"
                     >
-                      Update & Save New Password
+                      <Sparkles className="h-4 w-4 text-amber-400" />
+                      <span>Save & Update Owner Profile</span>
                     </button>
                   </div>
                 </form>

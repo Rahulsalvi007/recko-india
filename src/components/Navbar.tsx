@@ -30,7 +30,9 @@ import {
   ShieldCheck,
   Zap,
   CheckCircle2,
-  KeyRound
+  Trash2,
+  KeyRound,
+  Database
 } from 'lucide-react';
 import { MainCategory, LandlordUser, UserProfile, AppNotification } from '../types';
 
@@ -55,10 +57,15 @@ interface NavbarProps {
   onOpenUserAuthModal: () => void;
   onOpenUserProfileModal?: () => void;
   onOpenFeedbackModal?: () => void;
+  onOpenFirebaseSync?: () => void;
   onUserLogout?: () => void;
   onLandlordLogout?: () => void;
   notifications?: AppNotification[];
+  onDeleteNotification?: (id: string) => void;
+  onClearAllNotifications?: () => void;
   onMarkNotificationsRead?: () => void;
+  onOpenSplitBillModal?: () => void;
+  onOpenMaintenanceModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -82,18 +89,23 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenUserAuthModal,
   onOpenUserProfileModal,
   onOpenFeedbackModal,
+  onOpenFirebaseSync,
   onUserLogout,
   onLandlordLogout,
   notifications = [],
-  onMarkNotificationsRead
+  onDeleteNotification,
+  onClearAllNotifications,
+  onMarkNotificationsRead,
+  onOpenSplitBillModal,
+  onOpenMaintenanceModal
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
+  const [isToolsOpen, setIsToolsOpen] = useState(false);
 
   const menuRef = useRef<HTMLDivElement>(null);
-  const categoryDropRef = useRef<HTMLDivElement>(null);
   const notifRef = useRef<HTMLDivElement>(null);
+  const toolsRef = useRef<HTMLDivElement>(null);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -101,11 +113,11 @@ export const Navbar: React.FC<NavbarProps> = ({
       if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
         setIsMenuOpen(false);
       }
-      if (categoryDropRef.current && !categoryDropRef.current.contains(event.target as Node)) {
-        setIsCategoryDropdownOpen(false);
-      }
       if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
         setIsNotifOpen(false);
+      }
+      if (toolsRef.current && !toolsRef.current.contains(event.target as Node)) {
+        setIsToolsOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -128,7 +140,26 @@ export const Navbar: React.FC<NavbarProps> = ({
   ];
 
   const isUserOrHostLoggedIn = Boolean(currentUser || loggedInLandlord);
-  const unreadNotifsCount = isUserOrHostLoggedIn && notifications ? notifications.filter(n => !n.read).length : 0;
+  const activeEmail = (currentUser?.email || loggedInLandlord?.email || '').toLowerCase().trim();
+  const activeId = currentUser?.id || loggedInLandlord?.id || '';
+
+  const myPrivateNotifications = (isUserOrHostLoggedIn && notifications)
+    ? notifications.filter((n) => {
+        const nUserEmail = (n.userEmail || '').toLowerCase().trim();
+        const nOwnerEmail = (n.ownerEmail || '').toLowerCase().trim();
+
+        if (nUserEmail && nUserEmail === activeEmail) return true;
+        if (nOwnerEmail && nOwnerEmail === activeEmail) return true;
+        if (n.userId && n.userId === activeId) return true;
+        if (n.ownerId && n.ownerId === activeId) return true;
+        if (n.recipientRole === 'all') return true;
+        if (n.recipientRole === 'user' && currentUser) return true;
+        if (n.recipientRole === 'landlord' && loggedInLandlord) return true;
+        return false;
+      })
+    : [];
+
+  const unreadNotifsCount = myPrivateNotifications.filter((n) => !n.read).length;
 
   const handleListPropertyClick = () => {
     if (loggedInLandlord) {
@@ -146,29 +177,29 @@ export const Navbar: React.FC<NavbarProps> = ({
     }`}>
       
       {/* Top Main Navigation Bar (White, Black & Gold Styling) */}
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 sm:h-18 gap-2 sm:gap-4">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 max-w-full relative z-50">
+        <div className="flex items-center justify-between h-16 sm:h-18 gap-2 sm:gap-4 max-w-full">
           
           {/* Left: Brand Logo & Title with Gold Shield Accent */}
-          <div className="flex items-center space-x-3 shrink-0">
+          <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
             <button
               onClick={() => {
                 if (setActiveMode) setActiveMode('rent');
                 if (setActiveCategory) setActiveCategory('residential');
               }}
-              className="flex items-center space-x-2.5 sm:space-x-3 group text-left cursor-pointer transition-transform active:scale-98"
+              className="flex items-center space-x-2 sm:space-x-3 group text-left cursor-pointer transition-transform active:scale-98"
             >
-              <div className="h-10 w-10 sm:h-11 sm:w-11 rounded-2xl bg-gradient-to-tr from-amber-400 via-yellow-400 to-amber-500 text-black flex items-center justify-center font-black shadow-lg shadow-amber-500/25 group-hover:shadow-amber-400/40 group-hover:scale-105 transition-all shrink-0 border border-amber-300">
-                <Home className="h-5 w-5 sm:h-6 sm:w-6 stroke-[2.5]" />
+              <div className="h-9 w-9 sm:h-11 sm:w-11 rounded-2xl bg-gradient-to-tr from-amber-400 via-yellow-400 to-amber-500 text-black flex items-center justify-center font-black shadow-lg shadow-amber-500/25 group-hover:shadow-amber-400/40 group-hover:scale-105 transition-all shrink-0 border border-amber-300">
+                <Home className="h-4 w-4 sm:h-6 sm:w-6 stroke-[2.5]" />
               </div>
               <div className="flex flex-col">
-                <div className="flex items-center space-x-1.5">
-                  <span className={`text-lg sm:text-xl font-black tracking-tight leading-none ${
+                <div className="flex items-center space-x-1">
+                  <span className={`text-base sm:text-xl font-black tracking-tight leading-none ${
                     currentTheme === 'light' ? 'text-zinc-950' : 'text-white'
                   }`}>
                     Recko<span className="text-amber-400 font-black ml-0.5">India</span>
                   </span>
-                  <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-amber-400/10 text-amber-400 border border-amber-400/30">
+                  <span className="inline-flex items-center px-1.5 py-0.2 rounded text-[8px] sm:text-[9px] font-black uppercase tracking-wider bg-amber-400/10 text-amber-400 border border-amber-400/30">
                     PRO
                   </span>
                 </div>
@@ -181,8 +212,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
           </div>
 
-          {/* Center: Mode Capsule Switcher (Explore Rentals / My Bookings / Radar / AI) */}
-          <div className={`hidden md:flex items-center space-x-1 p-1 rounded-2xl border shrink-0 transition-all ${
+          {/* Center: Mode Capsule Switcher (Only visible on Large Screens 1024px+ to avoid navbar overflow) */}
+          <div className={`hidden lg:flex items-center space-x-1 p-1 rounded-2xl border shrink-0 transition-all ${
             currentTheme === 'light'
               ? 'bg-zinc-100/90 border-zinc-200 shadow-inner'
               : 'bg-[#121215] border-amber-500/20 shadow-lg shadow-black/40'
@@ -252,23 +283,67 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={onOpenAIModal}
               className={`hidden xl:flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
                 currentTheme === 'light'
-                  ? 'text-amber-950 bg-amber-400/20 hover:bg-amber-400/30 border border-amber-400/40'
-                  : 'text-amber-300 bg-amber-400/10 hover:bg-amber-400/20 border border-amber-500/30 hover:border-amber-400/60'
+                  ? 'text-blue-950 bg-blue-500/20 hover:bg-blue-500/30 border border-blue-400/40'
+                  : 'text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 hover:border-blue-400/60'
               }`}
               title="Recko AI Smart Advisor & 24/7 Matcher"
             >
-              <Sparkles className="h-3.5 w-3.5 text-amber-400 animate-pulse shrink-0" />
+              <Sparkles className="h-3.5 w-3.5 text-blue-400 animate-pulse shrink-0" />
               <span>AI Advisor</span>
             </button>
+
+            {/* 5. ⚡ Smart Tools Dropdown Menu */}
+            <div className="relative" ref={toolsRef}>
+              <button
+                onClick={() => setIsToolsOpen(!isToolsOpen)}
+                className="flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer bg-gradient-to-r from-blue-600/20 via-indigo-600/20 to-blue-500/20 text-blue-400 border border-blue-500/40 hover:border-blue-400 shrink-0"
+                title="Smart Rental Tools & Services"
+              >
+                <Zap className="h-3.5 w-3.5 text-blue-400 animate-pulse shrink-0" />
+                <span>Smart Tools</span>
+                <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${isToolsOpen ? 'rotate-180' : ''}`} />
+              </button>
+
+              {isToolsOpen && (
+                <div className="absolute right-0 mt-2 w-72 bg-[#0C1017] text-white rounded-2xl shadow-2xl border border-blue-500/30 p-2 z-50 animate-in fade-in zoom-in-95 duration-150 space-y-1">
+                  <div className="p-2 border-b border-zinc-800 text-[10px] font-mono font-bold text-blue-400 uppercase tracking-wider flex items-center justify-between">
+                    <span>⚡ RECKO SMART TOOLS ENGINE</span>
+                    <span className="bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded">PRO</span>
+                  </div>
+
+                  <button
+                    onClick={() => { setIsToolsOpen(false); onOpenSplitBillModal?.(); }}
+                    className="w-full p-2.5 rounded-xl text-left text-xs font-bold hover:bg-zinc-800 flex items-center space-x-2.5 transition-colors cursor-pointer text-slate-200 hover:text-white"
+                  >
+                    <Sparkles className="h-4 w-4 text-purple-400 shrink-0" />
+                    <div>
+                      <p className="font-extrabold text-white text-xs">Roommate Split-Bill Calculator</p>
+                      <p className="text-[10px] text-slate-400 font-normal">Rent & utility sharing per person</p>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => { setIsToolsOpen(false); onOpenMaintenanceModal?.(); }}
+                    className="w-full p-2.5 rounded-xl text-left text-xs font-bold hover:bg-zinc-800 flex items-center space-x-2.5 transition-colors cursor-pointer text-slate-200 hover:text-white"
+                  >
+                    <ShieldAlert className="h-4 w-4 text-rose-400 shrink-0" />
+                    <div>
+                      <p className="font-extrabold text-white text-xs">Maintenance & Repair Tickets</p>
+                      <p className="text-[10px] text-slate-400 font-normal">Log repairs directly to owner</p>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right: Actions, List Property, Wishlist, Notifications, Auth, Menu */}
           <div className="flex items-center space-x-1.5 sm:space-x-2.5 shrink-0">
             
-            {/* List Property Golden CTA Button (Hosts & Owners) */}
+            {/* List Property Blue CTA Button */}
             <button
               onClick={handleListPropertyClick}
-              className="hidden sm:flex items-center space-x-1.5 px-3.5 sm:px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-yellow-300 text-black shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 hover:scale-102 active:scale-98 shrink-0 border border-amber-300"
+              className="hidden lg:flex items-center space-x-1.5 px-3.5 sm:px-4 py-2.5 rounded-xl text-xs font-black transition-all cursor-pointer bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-indigo-500 text-white shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 hover:scale-102 active:scale-98 shrink-0 border border-blue-400"
               title="List your property, vehicle or item on Recko"
             >
               <PlusCircle className="h-4 w-4 stroke-[2.5] shrink-0" />
@@ -280,32 +355,13 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={onOpenAIModal}
               className={`hidden md:flex xl:hidden items-center space-x-1 px-3 py-2 rounded-xl text-xs font-black transition-all cursor-pointer shrink-0 border ${
                 currentTheme === 'light'
-                  ? 'bg-amber-400/20 text-zinc-950 border-amber-400/40 hover:bg-amber-400/30'
-                  : 'bg-amber-500/15 text-amber-300 border-amber-500/30 hover:bg-amber-500/25'
+                  ? 'bg-blue-500/20 text-blue-950 border-blue-400/40 hover:bg-blue-500/30'
+                  : 'bg-blue-500/15 text-blue-300 border-blue-500/30 hover:bg-blue-500/25'
               }`}
               title="AI Assistant"
             >
-              <Sparkles className="h-3.5 w-3.5 text-amber-400 animate-pulse shrink-0" />
+              <Sparkles className="h-3.5 w-3.5 text-blue-400 animate-pulse shrink-0" />
               <span>AI Help</span>
-            </button>
-
-            {/* Saved Wishlist Button */}
-            <button
-              id="btn-wishlist"
-              onClick={onOpenSavedModal}
-              className={`hidden md:flex relative p-2.5 rounded-xl transition-all cursor-pointer shrink-0 border ${
-                currentTheme === 'light'
-                  ? 'text-zinc-700 hover:text-zinc-950 hover:bg-zinc-100 border-zinc-200'
-                  : 'text-zinc-300 hover:text-white hover:bg-zinc-900 border-zinc-800 hover:border-amber-500/30'
-              }`}
-              title="Saved Wishlist"
-            >
-              <Heart className="h-4 w-4 text-rose-500" />
-              {savedCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-amber-400 text-black font-black text-[9px] h-4.5 w-4.5 rounded-full flex items-center justify-center shadow-md shadow-amber-400/30">
-                  {savedCount}
-                </span>
-              )}
             </button>
 
             {/* Notification Bell & Popover */}
@@ -332,7 +388,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               {/* Notification Popover Drawer (Black, White & Gold) */}
               {isNotifOpen && (
-                <div className="fixed inset-x-3 top-16 sm:absolute sm:inset-auto sm:right-0 sm:top-13 w-auto sm:w-96 max-h-[78vh] overflow-y-auto no-scrollbar bg-[#0a0a0c] border border-amber-500/30 rounded-3xl shadow-2xl p-4 z-50 text-white space-y-3 animate-in fade-in zoom-in-95 duration-200">
+                <div className="fixed inset-x-3 top-16 sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:mt-2 w-auto sm:w-96 max-h-[78vh] overflow-y-auto no-scrollbar bg-[#0a0a0c] border border-amber-500/30 rounded-3xl shadow-2xl p-4 z-50 text-white space-y-3 animate-in fade-in zoom-in-95 duration-200">
                   <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
                     <div className="flex items-center space-x-2">
                       <div className="h-7 w-7 rounded-lg bg-amber-400 text-black flex items-center justify-center font-black">
@@ -349,12 +405,24 @@ export const Navbar: React.FC<NavbarProps> = ({
                         )}
                       </div>
                     </div>
-                    <button
-                      onClick={() => setIsNotifOpen(false)}
-                      className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800 cursor-pointer"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
+                    <div className="flex items-center space-x-2">
+                      {myPrivateNotifications && myPrivateNotifications.length > 0 && onClearAllNotifications && (
+                        <button
+                          onClick={() => onClearAllNotifications()}
+                          className="text-[10px] text-rose-400 hover:text-rose-300 font-extrabold bg-rose-500/10 hover:bg-rose-500/20 px-2 py-1 rounded-lg border border-rose-500/30 cursor-pointer flex items-center space-x-1"
+                          title="Clear and Delete All Notifications"
+                        >
+                          <Trash2 className="h-3 w-3" />
+                          <span>Clear All</span>
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setIsNotifOpen(false)}
+                        className="text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800 cursor-pointer"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
 
                   {!isUserOrHostLoggedIn ? (
@@ -394,25 +462,38 @@ export const Navbar: React.FC<NavbarProps> = ({
                         </button>
                       </div>
                     </div>
-                  ) : notifications && notifications.length > 0 ? (
+                  ) : myPrivateNotifications && myPrivateNotifications.length > 0 ? (
                     <div className="space-y-2">
-                      {notifications.map((n) => (
+                      {myPrivateNotifications.map((n) => (
                         <div
                           key={n.id}
-                          className={`p-3 rounded-2xl border text-xs transition-all ${
-                            !n.read
-                              ? 'bg-amber-400/10 border-amber-500/40 text-amber-100'
-                              : 'bg-[#121215] border-zinc-800/80 text-zinc-300'
-                          }`}
+                          onClick={() => onDeleteNotification?.(n.id)}
+                          className="p-3 rounded-2xl border text-xs transition-all bg-amber-400/10 hover:bg-amber-400/20 border-amber-500/40 text-amber-100 cursor-pointer relative group"
+                          title="Click to view & delete notification"
                         >
                           <div className="flex items-center justify-between font-bold mb-1">
-                            <span className="text-amber-400 font-black flex items-center space-x-1">
+                            <span className="text-amber-400 font-black flex items-center space-x-1 pr-2">
                               <Zap className="h-3 w-3 text-amber-400 shrink-0" />
                               <span>{n.title}</span>
                             </span>
-                            <span className="text-[10px] text-zinc-500 font-mono">{n.timestamp}</span>
+                            <div className="flex items-center space-x-2 shrink-0">
+                              <span className="text-[10px] text-zinc-400 font-mono">{n.timestamp}</span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteNotification?.(n.id);
+                                }}
+                                className="p-1 text-zinc-400 hover:text-rose-400 hover:bg-rose-500/20 rounded-md transition-all cursor-pointer"
+                                title="Delete Notification"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </div>
                           <p className="text-[11px] text-zinc-300 leading-relaxed pl-4">{n.message}</p>
+                          <span className="text-[9px] text-amber-400/80 font-bold block text-right mt-1 opacity-70 group-hover:opacity-100">
+                            Click to dismiss & delete
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -425,23 +506,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
               )}
             </div>
-
-            {/* Light / Dark Mode Toggle Button */}
-            <button
-              onClick={() => onToggleTheme?.(currentTheme === 'light' ? 'dark' : 'light')}
-              className={`hidden md:flex p-2.5 rounded-xl transition-all cursor-pointer border ${
-                currentTheme === 'light'
-                  ? 'bg-zinc-100 hover:bg-zinc-200 text-zinc-800 border-zinc-200'
-                  : 'bg-[#121215] hover:bg-zinc-900 text-amber-400 border-zinc-800 hover:border-amber-500/30'
-              }`}
-              title="Toggle Theme"
-            >
-              {currentTheme === 'light' ? (
-                <Moon className="h-4 w-4 text-zinc-800" />
-              ) : (
-                <Sun className="h-4 w-4 text-amber-400" />
-              )}
-            </button>
 
             {/* User Login / Profile Pill Button */}
             <div className="flex items-center space-x-1 shrink-0">
@@ -503,7 +567,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               {/* Menu Drawer Dropdown (White, Black & Golden Accents) */}
               {isMenuOpen && (
-                <div className="fixed inset-x-3 top-16 sm:absolute sm:inset-auto sm:right-0 sm:top-13 w-auto sm:w-88 max-w-sm bg-[#0a0a0c] border border-amber-500/30 rounded-3xl shadow-2xl p-4 z-50 text-white space-y-4 animate-in fade-in zoom-in-95 duration-200 max-h-[82vh] overflow-y-auto no-scrollbar">
+                <div className="fixed inset-x-3 top-16 sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:mt-2 w-auto sm:w-88 max-w-sm bg-[#0a0a0c] border border-amber-500/30 rounded-3xl shadow-2xl p-4 z-50 text-white space-y-4 animate-in fade-in zoom-in-95 duration-200 max-h-[82vh] overflow-y-auto no-scrollbar">
                   
                   {/* Header */}
                   <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
@@ -523,71 +587,12 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </button>
                   </div>
 
-                  {/* 1. Quick Shortcuts */}
-                  <div className="space-y-1.5 pb-3 border-b border-zinc-800">
-                    <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider block mb-1.5">
-                      Fast Navigation
-                    </span>
-                    
-                    {/* List Property */}
-                    <button
-                      onClick={() => {
-                        setIsMenuOpen(false);
-                        handleListPropertyClick();
-                      }}
-                      className="w-full p-2.5 rounded-xl bg-gradient-to-r from-amber-400 to-yellow-400 text-black hover:from-amber-300 font-black text-xs flex items-center space-x-2.5 transition-all cursor-pointer shadow-md shadow-amber-400/20"
-                    >
-                      <PlusCircle className="h-4 w-4 stroke-[2.5]" />
-                      <span>List Property / Asset (Host)</span>
-                    </button>
-
-                    {/* 5-10km Radar */}
-                    {onOpenRadarModal && (
-                      <button
-                        onClick={() => {
-                          setIsMenuOpen(false);
-                          onOpenRadarModal();
-                        }}
-                        className="w-full p-2.5 rounded-xl bg-[#121215] border border-emerald-500/30 text-emerald-300 font-bold text-xs flex items-center space-x-2.5 hover:bg-emerald-950/40 transition-all cursor-pointer"
-                      >
-                        <Navigation className="h-4 w-4 text-emerald-400 animate-pulse" />
-                        <span>5-10km Proximity Radar</span>
-                      </button>
-                    )}
-
-                    {/* Smart Finder AI */}
-                    <button
-                      onClick={() => {
-                        setIsMenuOpen(false);
-                        onOpenAIModal();
-                      }}
-                      className="w-full p-2.5 rounded-xl bg-[#121215] border border-zinc-800 text-amber-200 font-bold text-xs flex items-center space-x-2.5 hover:bg-zinc-800 hover:border-amber-500/40 transition-all cursor-pointer"
-                    >
-                      <Sparkles className="h-4 w-4 text-amber-400 animate-pulse" />
-                      <span>Smart Finder AI Assistant</span>
-                    </button>
-
-                    {/* Saved Wishlist */}
-                    <button
-                      onClick={() => {
-                        setIsMenuOpen(false);
-                        onOpenSavedModal();
-                      }}
-                      className="w-full p-2.5 rounded-xl bg-[#121215] border border-zinc-800 text-rose-300 font-bold text-xs flex items-center justify-between hover:bg-zinc-800 transition-all cursor-pointer"
-                    >
-                      <div className="flex items-center space-x-2.5">
-                        <Heart className="h-4 w-4 text-rose-400" />
-                        <span>Saved Wishlist Items</span>
-                      </div>
-                      {savedCount > 0 && (
-                        <span className="bg-amber-400 text-black font-black text-[9px] px-2 py-0.5 rounded-full">
-                          {savedCount}
-                        </span>
-                      )}
-                    </button>
-
-                    {/* Help & Support */}
-                    {onOpenFeedbackModal && (
+                  {/* 1. Fast Navigation & Support */}
+                  {onOpenFeedbackModal && (
+                    <div className="space-y-1.5 pb-3 border-b border-zinc-800">
+                      <span className="text-[10px] font-black uppercase text-amber-400 tracking-wider block mb-1.5">
+                        Support & Resources
+                      </span>
                       <button
                         onClick={() => {
                           setIsMenuOpen(false);
@@ -598,12 +603,15 @@ export const Navbar: React.FC<NavbarProps> = ({
                         <MessageSquare className="h-4 w-4 text-amber-400" />
                         <span>Help & Support Center</span>
                       </button>
-                    )}
-                  </div>
+                    </div>
+                  )}
 
-                  {/* 2. Theme Toggle */}
+                  {/* 2. Theme Toggle (Dark & Light Mode Switcher) */}
                   <div className="flex items-center justify-between p-3 bg-[#121215] rounded-2xl border border-zinc-800 text-xs font-bold">
-                    <span className="text-zinc-300 font-medium">Display Theme</span>
+                    <span className="text-zinc-300 font-medium flex items-center space-x-2">
+                      {currentTheme === 'light' ? <Sun className="h-4 w-4 text-amber-400" /> : <Moon className="h-4 w-4 text-amber-400" />}
+                      <span>Display Theme</span>
+                    </span>
                     <div className="flex items-center space-x-1">
                       <button
                         onClick={() => onToggleTheme?.('light')}
@@ -629,6 +637,27 @@ export const Navbar: React.FC<NavbarProps> = ({
                       </button>
                     </div>
                   </div>
+
+                  {/* 3. My Saved Wishlist Direct Link */}
+                  <button
+                    onClick={() => {
+                      setIsMenuOpen(false);
+                      onOpenSavedModal();
+                    }}
+                    className="w-full p-3 rounded-2xl border border-zinc-800 bg-[#121215] hover:bg-zinc-800 text-zinc-200 flex items-center justify-between text-xs font-bold transition-all cursor-pointer hover:border-amber-500/30"
+                  >
+                    <div className="flex items-center space-x-2.5">
+                      <Heart className="h-4 w-4 text-rose-500 shrink-0 fill-rose-500/20" />
+                      <span className="font-extrabold text-white">My Saved Wishlist</span>
+                    </div>
+                    {savedCount > 0 ? (
+                      <span className="bg-amber-400 text-black font-black text-[10px] px-2.5 py-0.5 rounded-full shadow-md">
+                        {savedCount} Saved
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-zinc-500 font-medium">Empty</span>
+                    )}
+                  </button>
 
                   {/* 3. Account Portals */}
                   <div className="space-y-2">
@@ -717,6 +746,25 @@ export const Navbar: React.FC<NavbarProps> = ({
                       )}
                     </button>
 
+                    {/* Firebase Cloud Sync Portal */}
+                    {onOpenFirebaseSync && (
+                      <button
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          onOpenFirebaseSync();
+                        }}
+                        className="w-full p-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 flex items-center justify-between text-xs font-bold transition-all cursor-pointer shadow-sm"
+                      >
+                        <div className="flex items-center space-x-2.5 truncate mr-2">
+                          <Database className="h-4 w-4 text-amber-400 shrink-0 animate-pulse" />
+                          <span className="truncate font-black">Firebase Cloud Sync</span>
+                        </div>
+                        <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-amber-400 text-black shrink-0">
+                          CLOUD DB
+                        </span>
+                      </button>
+                    )}
+
                     {/* Logout Buttons */}
                     {(currentUser || loggedInLandlord) && (
                       <div className="pt-2 border-t border-zinc-800 space-y-1.5">
@@ -791,55 +839,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </button>
                 );
               })}
-            </div>
-
-            {/* Category Dropdown Menu (md+ screens) */}
-            <div className="relative shrink-0 hidden md:block" ref={categoryDropRef}>
-              <button
-                onClick={() => setIsCategoryDropdownOpen(!isCategoryDropdownOpen)}
-                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-black border transition-all cursor-pointer ${
-                  currentTheme === 'light'
-                    ? 'bg-zinc-200 text-zinc-900 border-zinc-300 hover:bg-zinc-300'
-                    : 'bg-[#121215] text-zinc-200 border-zinc-800 hover:bg-zinc-800 hover:border-amber-500/40'
-                }`}
-              >
-                <span>Categories</span>
-                <ChevronDown className={`h-3 w-3 transition-transform text-amber-400 ${isCategoryDropdownOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              {isCategoryDropdownOpen && (
-                <div className="absolute right-0 top-11 w-76 max-h-[72vh] overflow-y-auto no-scrollbar bg-[#0a0a0c] border border-amber-500/30 rounded-2xl shadow-2xl p-2.5 z-50 text-white space-y-1 animate-in fade-in zoom-in-95 duration-150">
-                  <span className="text-[10px] font-black uppercase text-amber-400 px-3 py-1.5 block tracking-wider">
-                    All 10 Rental Categories
-                  </span>
-                  {allCategories.map((cat) => (
-                    <button
-                      key={cat.id}
-                      onClick={() => {
-                        setActiveCategory(cat.id);
-                        setIsCategoryDropdownOpen(false);
-                      }}
-                      className={`w-full p-2.5 rounded-xl text-left flex items-start space-x-3 transition-all cursor-pointer ${
-                        activeCategory === cat.id
-                          ? 'bg-gradient-to-r from-amber-400 to-yellow-400 text-black font-black shadow-xs'
-                          : 'hover:bg-zinc-900 text-zinc-300 hover:text-white'
-                      }`}
-                    >
-                      <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${
-                        activeCategory === cat.id ? 'bg-black text-amber-400' : 'bg-zinc-900 text-amber-400 border border-zinc-800'
-                      }`}>
-                        {cat.icon}
-                      </div>
-                      <div className="truncate">
-                        <span className="text-xs font-black block truncate">{cat.label}</span>
-                        <span className={`text-[10px] block truncate ${activeCategory === cat.id ? 'text-zinc-800 font-bold' : 'text-zinc-500'}`}>
-                          {cat.desc}
-                        </span>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
 
           </div>

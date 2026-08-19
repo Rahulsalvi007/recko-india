@@ -55,11 +55,11 @@ export const Footer: React.FC<FooterProps> = ({
 
   const FAQS_DATA = [
     {
-      q: 'How does RentHub promise 100% Zero Brokerage?',
-      a: 'RentHub directly connects tenants with verified property owners with zero middleman commission or agent fees.'
+      q: 'How does Recko-India promise 100% Zero Brokerage?',
+      a: 'Recko-India directly connects tenants with verified property owners with zero middleman commission or agent fees.'
     },
     {
-      q: 'How can owners list a property on RentHub?',
+      q: 'How can owners list a property on Recko-India?',
       a: 'Click "List Your Property" to complete quick owner verification and publish your listing for free.'
     },
     {
@@ -88,7 +88,7 @@ export const Footer: React.FC<FooterProps> = ({
               </div>
               <div>
                 <h3 className="font-extrabold text-base tracking-tight text-white group-hover:text-indigo-300 transition-colors">
-                  RentHub India
+                  Recko-India India
                 </h3>
                 <p className="text-[10px] font-bold text-indigo-400">
                   Your Perfect Rental Partner • Zero Brokerage
@@ -103,9 +103,9 @@ export const Footer: React.FC<FooterProps> = ({
                 <span>+91 1800-419-8080</span>
               </a>
               <span className="text-zinc-700 hidden sm:inline">•</span>
-              <a href="mailto:support@renthub.in" className="flex items-center space-x-1.5 hover:text-amber-400 transition-colors">
+              <a href="mailto:support@Recko-India.in" className="flex items-center space-x-1.5 hover:text-amber-400 transition-colors">
                 <Mail className="h-3.5 w-3.5 text-amber-400" />
-                <span>support@renthub.in</span>
+                <span>support@Recko-India.in</span>
               </a>
               <span className="text-zinc-700 hidden sm:inline">•</span>
               <button
@@ -168,7 +168,7 @@ export const Footer: React.FC<FooterProps> = ({
 
           {/* Bottom Bar: Clean Copyright */}
           <div className="pt-2 text-center text-[11px] text-zinc-500 font-medium">
-            © {new Date().getFullYear()} RentHub India. All rights reserved.
+            © {new Date().getFullYear()} Recko-India India. All rights reserved.
           </div>
 
         </div>
@@ -191,13 +191,13 @@ export const Footer: React.FC<FooterProps> = ({
                 </div>
                 <div>
                   <h2 className="text-sm font-extrabold text-white">
-                    {activeModalPage === 'about' && 'About RentHub'}
+                    {activeModalPage === 'about' && 'About Recko-India'}
                     {activeModalPage === 'contact' && 'Contact Support'}
                     {activeModalPage === 'privacy' && 'Privacy Policy'}
                     {activeModalPage === 'terms' && 'Terms & Conditions'}
                     {activeModalPage === 'faqs' && 'Frequently Asked Questions'}
                   </h2>
-                  <p className="text-[10px] text-amber-400 font-bold">RentHub India</p>
+                  <p className="text-[10px] text-amber-400 font-bold">Recko-India India</p>
                 </div>
               </div>
 
@@ -219,10 +219,10 @@ export const Footer: React.FC<FooterProps> = ({
                   <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl space-y-2">
                     <h3 className="font-bold text-white flex items-center space-x-2">
                       <Sparkles className="h-4 w-4 text-amber-400" />
-                      <span>RentHub India</span>
+                      <span>Recko-India</span>
                     </h3>
                     <p className="text-zinc-400 leading-relaxed">
-                      RentHub is a unified rental platform connecting tenants directly with verified property owners for flats, student PGs, hotels, commercial spaces, and vehicles with 100% zero brokerage.
+                      Recko-India is a unified rental platform connecting tenants directly with verified property owners for flats, student PGs, hotels, commercial spaces, and vehicles with 100% zero brokerage.
                     </p>
                   </div>
                   <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 space-y-1">
@@ -241,12 +241,12 @@ export const Footer: React.FC<FooterProps> = ({
                     <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800">
                       <PhoneCall className="h-5 w-5 text-emerald-400 mx-auto mb-1" />
                       <p className="text-[10px] text-zinc-400">Toll-Free</p>
-                      <p className="font-bold text-white text-xs">+91 1800-419-8080</p>
+                      <p className="font-bold text-white text-xs">6367959137</p>
                     </div>
                     <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800">
                       <Mail className="h-5 w-5 text-amber-400 mx-auto mb-1" />
                       <p className="text-[10px] text-zinc-400">Email</p>
-                      <p className="font-bold text-white text-xs">support@renthub.in</p>
+                      <p className="font-bold text-white text-xs">infotechjahvi@gmail.com</p>
                     </div>
                   </div>
 
@@ -308,7 +308,7 @@ export const Footer: React.FC<FooterProps> = ({
                 <div className="space-y-2 bg-zinc-950 p-4 rounded-xl border border-zinc-800 text-zinc-300">
                   <h4 className="font-extrabold text-white text-xs">Privacy Commitment</h4>
                   <p className="text-zinc-400 text-[11px] leading-relaxed">
-                    At RentHub India, user privacy and data security are strictly maintained. We do not sell user information to third parties. All personal contact details remain encrypted.
+                    At Recko-India, user privacy and data security are strictly maintained. We do not sell user information to third parties. All personal contact details remain encrypted.
                   </p>
                 </div>
               )}
@@ -318,7 +318,7 @@ export const Footer: React.FC<FooterProps> = ({
                 <div className="space-y-2 bg-zinc-950 p-4 rounded-xl border border-zinc-800 text-zinc-300">
                   <h4 className="font-extrabold text-white text-xs">Terms & Conditions</h4>
                   <p className="text-zinc-400 text-[11px] leading-relaxed">
-                    RentHub provides a direct owner-tenant rental discovery service. Property owners are responsible for posting accurate details. Zero brokerage policy applies to direct listings.
+                    Recko-India provides a direct owner-tenant rental discovery service. Property owners are responsible for posting accurate details. Zero brokerage policy applies to direct listings.
                   </p>
                 </div>
               )}

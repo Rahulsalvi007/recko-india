@@ -17,6 +17,7 @@ import {
   Check
 } from 'lucide-react';
 import { UserProfile, LandlordUser } from '../types';
+import { INITIAL_LANDLORDS } from '../data/mockData';
 import { sendEmailOtpClient, verifyEmailOtpClient } from '../lib/brevoClient';
 import { saveDocument } from '../lib/firebase';
 
@@ -89,38 +90,113 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Helper to find registered account
-  const findRegisteredAccount = (identifier: string, targetRole: 'user' | 'landlord') => {
+  // Comprehensive Account Role Validation & Verification Engine
+  const verifyAccountRole = (identifier: string, expectedRole: 'user' | 'landlord'): {
+    valid: boolean;
+    errorMsg?: string;
+    account?: any;
+    detectedRole?: 'user' | 'landlord' | 'admin';
+  } => {
     const clean = identifier.trim().toLowerCase();
     const cleanDigits = identifier.replace(/[^0-9]/g, '');
 
-    if (targetRole === 'user') {
-      try {
-        const saved = localStorage.getItem('renthub_users_list');
-        const users: UserProfile[] = saved ? JSON.parse(saved) : [];
-        return users.find(
-          (u) =>
-            u.email.toLowerCase() === clean ||
-            (u.phone && cleanDigits.length >= 8 && u.phone.replace(/[^0-9]/g, '').includes(cleanDigits))
-        );
-      } catch (e) {
-        console.error(e);
+    // 1. Check if Email belongs to Super Admin or Junior Admin Staff
+    const superAdminEmail = 'salvirahul7038@gmail.com';
+    let juniorAdmins: any[] = [];
+    try {
+      const stored = localStorage.getItem('renthub_junior_admins_list');
+      if (stored) juniorAdmins = JSON.parse(stored);
+    } catch (e) {
+      console.error(e);
+    }
+
+    const isAdmin = clean === superAdminEmail || juniorAdmins.some((a) => (a.email && a.email.toLowerCase() === clean));
+    if (isAdmin) {
+      return {
+        valid: false,
+        detectedRole: 'admin',
+        errorMsg: '🚫 Admin Account Protection: This email belongs to a Super Admin / Staff account. Admin password resets must be done inside Super Admin Control Center.'
+      };
+    }
+
+    // 2. Load all registered Landlords / Owners
+    let landlordsList: LandlordUser[] = [...INITIAL_LANDLORDS];
+    try {
+      const storedLandlords = localStorage.getItem('renthub_landlords_list');
+      if (storedLandlords) {
+        const parsed = JSON.parse(storedLandlords);
+        landlordsList = [...parsed, ...landlordsList];
+      }
+      const singleLandlord = localStorage.getItem('renthub_landlord_user');
+      if (singleLandlord) {
+        landlordsList.unshift(JSON.parse(singleLandlord));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
+    const foundLandlord = landlordsList.find(
+      (l) =>
+        (l.id && l.id.toLowerCase() === clean) ||
+        (l.email && l.email.toLowerCase() === clean) ||
+        (l.phone && cleanDigits.length >= 8 && l.phone.replace(/[^0-9]/g, '').includes(cleanDigits))
+    );
+
+    // 3. Load all registered Tenant Users
+    let usersList: UserProfile[] = [];
+    try {
+      const storedUsers = localStorage.getItem('renthub_users_list');
+      if (storedUsers) {
+        usersList = JSON.parse(storedUsers);
+      }
+      const singleUser = localStorage.getItem('renthub_user');
+      if (singleUser) {
+        usersList.unshift(JSON.parse(singleUser));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
+    const foundUser = usersList.find(
+      (u) =>
+        (u.email && u.email.toLowerCase() === clean) ||
+        (u.phone && cleanDigits.length >= 8 && u.phone.replace(/[^0-9]/g, '').includes(cleanDigits))
+    );
+
+    // 4. Role Match Enforcement
+    if (expectedRole === 'user') {
+      if (foundLandlord && !foundUser) {
+        return {
+          valid: false,
+          detectedRole: 'landlord',
+          errorMsg: `⚠️ Owner / Landlord Account Detected: "${identifier}" is registered as an Owner / Host account (${foundLandlord.name}). Please click "Owner / Host Login" to reset your password.`
+        };
+      }
+      if (foundUser) {
+        return { valid: true, account: foundUser, detectedRole: 'user' };
       }
     } else {
-      try {
-        const saved = localStorage.getItem('renthub_landlords_list');
-        const landlords: LandlordUser[] = saved ? JSON.parse(saved) : [];
-        return landlords.find(
-          (l) =>
-            l.id.toLowerCase() === clean ||
-            (l.email && l.email.toLowerCase() === clean) ||
-            (l.phone && cleanDigits.length >= 8 && l.phone.replace(/[^0-9]/g, '').includes(cleanDigits))
-        );
-      } catch (e) {
-        console.error(e);
+      if (foundUser && !foundLandlord) {
+        return {
+          valid: false,
+          detectedRole: 'user',
+          errorMsg: `⚠️ Tenant User Account Detected: "${identifier}" is registered as a Tenant User account (${foundUser.name}). Please click "User Login" to reset your password.`
+        };
+      }
+      if (foundLandlord) {
+        return { valid: true, account: foundLandlord, detectedRole: 'landlord' };
       }
     }
-    return null;
+
+    // 5. Account fallback for standard emails
+    if (clean.includes('@')) {
+      return { valid: true, account: { name: clean.split('@')[0], email: clean } };
+    }
+
+    return {
+      valid: false,
+      errorMsg: `❌ Account Not Found: No registered ${expectedRole === 'user' ? 'Tenant User' : 'Owner / Landlord'} account found for "${identifier}". Please check your email or Register.`
+    };
   };
 
   // Step 1: Send OTP to Email
@@ -135,20 +211,26 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
       return;
     }
 
-    // Lookup account
-    const found = findRegisteredAccount(targetEmailOrId, role);
+    // Enforce Strict Account Role Check
+    const roleCheck = verifyAccountRole(targetEmailOrId, role);
+    if (!roleCheck.valid) {
+      setError(roleCheck.errorMsg || 'Role verification failed.');
+      return;
+    }
+
+    const found = roleCheck.account;
     let destinationEmail = targetEmailOrId;
     let recipientName = 'User';
 
-    if (found) {
+    if (found && found.email) {
       destinationEmail = found.email;
-      recipientName = found.name;
-      setMatchedAccountName(found.name);
+      recipientName = found.name || 'User';
+      setMatchedAccountName(found.name || 'User');
     } else if (targetEmailOrId.includes('@')) {
       destinationEmail = targetEmailOrId;
       setMatchedAccountName(targetEmailOrId.split('@')[0]);
     } else {
-      setError(`No ${role === 'user' ? 'Tenant / User' : 'Owner / Landlord'} account found with this ID. Please enter your registered Gmail.`);
+      setError(`No ${role === 'user' ? 'Tenant / User' : 'Owner / Landlord'} account found with this ID.`);
       return;
     }
 
@@ -313,6 +395,7 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
         if (idx >= 0) {
           landlords[idx].password = cleanNewPass;
           localStorage.setItem('renthub_landlords_list', JSON.stringify(landlords));
+          localStorage.setItem('renthub_landlords', JSON.stringify(landlords));
 
           // Save to Firestore
           try {

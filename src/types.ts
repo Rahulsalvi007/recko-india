@@ -294,9 +294,64 @@ export interface Vehicle {
   currentLat?: number;
   currentLng?: number;
   speedKmh?: number;
-  fuelLevelPercent?: number;
   licensePlate: string;
   isAvailable?: boolean;
+
+  /* Hourly & Dynamic Rental Engine Rules */
+  hourlyPrice?: number;
+  dailyPrice?: number;
+  weeklyPrice?: number;
+  extraHourRate?: number;
+  lateFeePerHour?: number;
+  gracePeriodMins?: number;
+  minRentalHours?: number;
+  maxHourlyRentalHours?: number;
+  differentLocationFee?: number;
+
+  /* 9-Section Detailed Vehicle Listing Attributes */
+  variant?: string;
+  colour?: string;
+  currentOdometerKm?: number;
+  detailedPhotos?: {
+    front?: string;
+    back?: string;
+    left?: string;
+    right?: string;
+    interior?: string;
+    dashboard?: string;
+    odometer?: string;
+    scratches?: string;
+  };
+  documents?: {
+    rcUrl?: string;
+    insuranceUrl?: string;
+    pucUrl?: string;
+    ownerKycUrl?: string;
+  };
+  homeDeliveryAvailable?: boolean;
+  deliveryCharge?: number;
+  differentReturnLocationAllowed?: boolean;
+  returnLocationHub?: string;
+  pickupInstructions?: string;
+  includedKmPerDay?: number;
+  extraKmChargeRate?: number;
+  fuelPolicy?: 'Same Level' | 'Full-to-Full';
+  outstationAllowed?: boolean;
+  borderCrossingAllowed?: boolean;
+  commercialUseAllowed?: boolean;
+  smokingAllowed?: boolean;
+  petsAllowed?: boolean;
+  availableDays?: string;
+  availableTimeSlot?: string;
+  advanceBookingNoticeHours?: number;
+  ownerEmail?: string;
+  ownerAddress?: string;
+  ownerKycIdNumber?: string;
+  ownerUpiOrBank?: string;
+  ownerEmergencyContact?: string;
+  cancellationPolicy?: string;
+  damagePolicy?: string;
+  cleaningFeeIfDirty?: number;
 }
 
 export interface GeneralItem {
@@ -337,7 +392,7 @@ export interface RentalBooking {
   daysCount?: number;
   totalPrice: number;
   withDriver?: boolean;
-  status: 'Pending Verification' | 'Owner Reviewing' | 'Approved' | 'Booking Confirmed' | 'Pending Requests' | 'Accepted' | 'Rejected' | 'Completed' | 'Active' | 'Cancelled';
+  status: 'Pending Verification' | 'Owner Reviewing' | 'Approved' | 'Booking Confirmed' | 'Vehicle Picked Up' | 'Rental Active' | 'Return Pending' | 'Pending Requests' | 'Accepted' | 'Rejected' | 'Completed' | 'Active' | 'Cancelled';
   trackingActive?: boolean;
   currentLat?: number;
   currentLng?: number;
@@ -359,15 +414,65 @@ export interface RentalBooking {
   userEmail?: string;
   dob?: string;
   currentAddress?: string;
+  permanentAddress?: string;
+  companyCollegeName?: string;
   occupation?: string;
   monthlyIncome?: string;
   occupantsCount?: number;
   moveInDate?: string;
+  expectedMoveOutDate?: string;
+  rentalDurationType?: '1 month' | '6 months' | '11 months' | 'Custom';
+  preferredVisitDateTime?: string;
   govIdType?: string;
   govIdNumber?: string;
   idProofUrl?: string;
+  passportPhotoUrl?: string;
   emergencyContact?: string;
+
+  /* Property Cost & Breakdown Details */
+  roomType?: string;
+  furnishedStatus?: string;
+  maintenanceAmount?: number;
+  utilityCharges?: string;
+  fullAddress?: string;
+  amenities?: string[];
+  paymentMethod?: string;
+  transactionId?: string;
   
+  /* Vehicle Rental & Digital Inspection Fields */
+  vehicleType?: 'Bike' | 'Scooter' | 'Car' | 'SUV' | 'EV';
+  registrationNumber?: string;
+  fuelType?: string;
+  transmission?: string;
+  seatingCapacity?: number;
+  includedKm?: number;
+  extraKmCharge?: number;
+  fuelPolicy?: string;
+  drivingLicenseNumber?: string;
+  drivingLicenseValidity?: string;
+  additionalDriverName?: string;
+  additionalDriverDL?: string;
+  pickupDateTime?: string;
+  returnDateTime?: string;
+  pickupLocation?: string;
+  returnLocation?: string;
+  pickupOdometerKm?: number;
+  returnOdometerKm?: number;
+  pickupFuelLevelPercent?: number;
+  returnFuelLevelPercent?: number;
+  existingDamageNotes?: string;
+  extraKmFeePaid?: number;
+  depositSettlementAmount?: number;
+
+  /* Hourly Rental Calculation Parameters */
+  rentalDurationMode?: 'hourly' | 'daily' | 'weekly';
+  pickupTime?: string;
+  returnTime?: string;
+  totalRentalHours?: number;
+  hourlyRateCharged?: number;
+  lateReturnFee?: number;
+  differentLocationFeePaid?: number;
+
   /* Module Specific Booking Details */
   hotelRoomType?: string;
   guestsCount?: number;
@@ -381,6 +486,7 @@ export interface RentalBooking {
 export interface WishlistItem {
   id: string;
   itemId: string;
+  userEmail?: string;
   category: MainCategory;
   title: string;
   image: string;
@@ -470,8 +576,8 @@ export interface ClothingItem {
   title: string;
   category: 'clothing';
   gender: 'Boys / Men' | 'Girls / Women' | 'Kids' | 'Unisex';
-  clothingType: 'Wedding Lehenga' | 'Sherwani' | 'Designer Suit' | 'Evening Gown' | 'Pre-wedding Outfit' | 'Traditional Saree' | 'Party Wear';
-  size: 'S' | 'M' | 'L' | 'XL' | 'XXL' | 'Free Size';
+  clothingType: 'Wedding Lehenga' | 'Sherwani' | 'Designer Suit' | 'Evening Gown' | 'Pre-wedding Outfit' | 'Traditional Saree' | 'Party Wear' | 'Shirt' | 'Dress' | 'Jacket' | 'Jeans/Pants' | 'Other';
+  size: 'XS' | 'S' | 'M' | 'L' | 'XL' | 'XXL' | 'Free Size' | 'Custom';
   rentPerDay: number;
   deposit: number;
   location: string;
@@ -486,6 +592,63 @@ export interface ClothingItem {
   reviewsCount: number;
   description: string;
   isAvailable?: boolean;
+
+  /* 10-Section Clothing Listing Attributes */
+  brand?: string;
+  colour?: string;
+  fabric?: string;
+  patternStyle?: string;
+  occasion?: 'Wedding' | 'Party' | 'Casual' | 'Traditional' | 'Formal' | 'Pre-wedding';
+  measurements?: {
+    chest?: string;
+    waist?: string;
+    length?: string;
+    shoulder?: string;
+    sleeveLength?: string;
+    blouseSize?: string;
+    lehengaWaist?: string;
+    dupattaLength?: string;
+  };
+  detailedPhotos?: {
+    front?: string;
+    back?: string;
+    side?: string;
+    fabricCloseUp?: string;
+    modelPhoto?: string;
+    damageStainPhoto?: string;
+  };
+  clothingCondition?: 'Brand New' | 'Like New' | 'Excellent' | 'Good' | 'Used';
+  conditionAudit?: {
+    hasStain?: boolean;
+    hasTear?: boolean;
+    missingButton?: boolean;
+    isAltered?: boolean;
+  };
+  pricingTiers?: {
+    hourlyRate?: number;
+    rate1Day?: number;
+    rate2Days?: number;
+    rate3Days?: number;
+    rate1Week?: number;
+    lateFeePerDay?: number;
+  };
+  deliveryOptions?: {
+    selfPickup?: boolean;
+    homeDelivery?: boolean;
+    deliveryFee?: number;
+    returnPickup?: boolean;
+    boutiqueAddress?: string;
+  };
+  hygieneRules?: {
+    dryCleanedIncluded?: boolean;
+    sanitizedSteamIroned?: boolean;
+    userWashingAllowed?: boolean;
+    stainDamagePolicy?: string;
+  };
+  ownerEmail?: string;
+  ownerAddress?: string;
+  ownerKycId?: string;
+  ownerBankUpi?: string;
 }
 
 /* Sports & Turf Rental Types */

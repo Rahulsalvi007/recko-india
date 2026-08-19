@@ -74,6 +74,7 @@ interface AllAssetsShowcaseProps {
   toggleWishlist: (item: any) => void;
   loggedInLandlord: LandlordUser | null;
   onTrackGPS?: (v: Vehicle) => void;
+  onReserveRestaurant?: (r: Restaurant) => void;
 }
 
 export const AllAssetsShowcase: React.FC<AllAssetsShowcaseProps> = ({
@@ -108,7 +109,8 @@ export const AllAssetsShowcase: React.FC<AllAssetsShowcaseProps> = ({
   toggleSave,
   toggleWishlist,
   loggedInLandlord,
-  onTrackGPS
+  onTrackGPS,
+  onReserveRestaurant
 }) => {
   const totalAssetsCount =
     residentialProperties.length +
@@ -487,7 +489,7 @@ export const AllAssetsShowcase: React.FC<AllAssetsShowcaseProps> = ({
                 restaurant={restaurant}
                 index={idx}
                 onSelect={(r) => onSelectRestaurant(r)}
-                onReserve={(r) => onSelectRestaurant(r)}
+                onReserve={(r) => onReserveRestaurant ? onReserveRestaurant(r) : onSelectRestaurant(r)}
                 onOpenDirections={(r) => onOpenDirections(r)}
                 isWishlisted={wishlist.some((w) => w.id === restaurant.id)}
                 onToggleWishlist={(r) =>

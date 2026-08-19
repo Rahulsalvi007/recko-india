@@ -35,18 +35,18 @@ export const DirectionsMapModal: React.FC<DirectionsMapModalProps> = ({ item, on
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-6">
-      <div className="bg-[#FAF7F2] w-full max-w-3xl rounded-3xl border border-[#E5E0D8] shadow-2xl overflow-hidden relative my-auto">
+      <div className="bg-white dark:bg-zinc-900 text-slate-900 dark:text-white w-full max-w-3xl rounded-3xl border border-slate-200 dark:border-zinc-800 shadow-2xl overflow-hidden relative my-auto">
         
         {/* Header */}
-        <div className="bg-[#0C1017] text-[#FAF7F2] p-5 sm:p-6 flex justify-between items-start border-b border-slate-800">
+        <div className="bg-slate-900 dark:bg-zinc-950 text-white p-5 sm:p-6 flex justify-between items-start border-b border-slate-800 dark:border-zinc-800">
           <div>
-            <div className="inline-flex items-center space-x-2 bg-slate-800 border border-slate-700 px-3 py-1 rounded-full text-amber-300 text-xs font-bold mb-2">
+            <div className="inline-flex items-center space-x-2 bg-slate-800 border border-slate-700 px-3 py-1 rounded-full text-blue-400 text-xs font-bold mb-2">
               <Navigation className="h-3.5 w-3.5" />
               <span>Google Maps Location & Distance Matrix</span>
             </div>
-            <h2 className="text-xl font-black">{item.title}</h2>
+            <h2 className="text-xl font-black text-white">{item.title}</h2>
             <p className="text-xs text-slate-300 font-semibold mt-1 flex items-center space-x-1">
-              <MapPin className="h-3.5 w-3.5 text-amber-300" />
+              <MapPin className="h-3.5 w-3.5 text-blue-400" />
               <span>{item.location}, {item.city}</span>
             </p>
           </div>

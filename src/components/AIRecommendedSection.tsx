@@ -380,13 +380,13 @@ export const AIRecommendedSection: React.FC<AIRecommendedSectionProps> = ({
   };
 
   return (
-    <div className="bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 border border-amber-400/30 rounded-3xl p-4 sm:p-6 shadow-xl relative overflow-hidden my-6">
-      <div className="absolute top-0 right-0 w-80 h-80 bg-amber-400/10 rounded-full blur-3xl -z-10 pointer-events-none" />
+    <div className="bg-gradient-to-br from-zinc-950 via-zinc-900 to-zinc-950 border border-blue-500/30 rounded-3xl p-4 sm:p-6 shadow-xl relative overflow-hidden my-6">
+      <div className="absolute top-0 right-0 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl -z-10 pointer-events-none" />
       
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5 pb-4 border-b border-amber-400/20">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 mb-5 pb-4 border-b border-blue-500/20">
         <div className="flex items-center space-x-3">
-          <div className="p-2.5 bg-amber-400 text-zinc-950 rounded-2xl shadow-md font-black shrink-0">
+          <div className="p-2.5 bg-blue-600 text-white rounded-2xl shadow-md font-black shrink-0">
             <Sparkles className="h-5 w-5 animate-pulse" />
           </div>
           <div>
@@ -394,12 +394,12 @@ export const AIRecommendedSection: React.FC<AIRecommendedSectionProps> = ({
               <h2 className="text-lg sm:text-xl font-black text-white tracking-tight">
                 AI Recommended For You
               </h2>
-              <span className="bg-amber-400/20 text-amber-300 border border-amber-400/40 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full">
+              <span className="bg-blue-500/20 text-blue-300 border border-blue-500/40 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full">
                 Nearby Across All Assets (Cars, Outfits, Stays & PGs)
               </span>
             </div>
             <p className="text-xs text-zinc-400 font-medium mt-0.5">
-              Live intelligent curation for <strong className="text-amber-300">{selectedCity || 'All Cities'}</strong> • Ranked by proximity, safety rating & verified status
+              Live intelligent curation for <strong className="text-blue-400">{selectedCity || 'All Cities'}</strong> • Ranked by proximity, safety rating & verified status
             </p>
           </div>
         </div>
@@ -420,7 +420,7 @@ export const AIRecommendedSection: React.FC<AIRecommendedSectionProps> = ({
               onClick={() => setActiveFilter(tab.id as any)}
               className={`text-[11px] font-extrabold px-3 py-1.5 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
                 activeFilter === tab.id
-                  ? 'bg-amber-400 text-zinc-950 font-black shadow-md scale-102'
+                  ? 'bg-blue-600 text-white font-black shadow-md scale-102'
                   : 'bg-zinc-900 hover:bg-zinc-800 text-zinc-300 border border-zinc-800'
               }`}
             >

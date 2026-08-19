@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Search,
   MapPin,
@@ -12,7 +12,11 @@ import {
   Key,
   Sparkles,
   ChevronDown,
-  Navigation
+  Navigation,
+  ShieldCheck,
+  Clock,
+  Shield,
+  Mic
 } from 'lucide-react';
 import { MainCategory } from '../types';
 
@@ -56,8 +60,52 @@ export const CategoryHeader: React.FC<CategoryHeaderProps> = ({
   onOpenRadar
 }) => {
   const [heroTab, setHeroTab] = useState<'properties' | 'vehicles'>(activeCategory === 'vehicle' ? 'vehicles' : 'properties');
-  const [radius, setRadius] = useState<string>('10 km');
-  const [budgetLabel, setBudgetLabel] = useState<string>('₹ 0 - ₹ 2,50,000+');
+  const [isListening, setIsListening] = useState(false);
+
+  const handleStartVoiceSearch = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('🎙️ Voice Search is supported on Google Chrome, Edge, and modern browsers.');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'hi-IN';
+    recognition.continuous = false;
+    recognition.interimResults = false;
+
+    setIsListening(true);
+    recognition.start();
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setSearchQuery(transcript);
+      setIsListening(false);
+    };
+
+    recognition.onerror = () => {
+      setIsListening(false);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+    };
+  };
+
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.defaultMuted = true;
+      videoRef.current.muted = true;
+      const playPromise = videoRef.current.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn('Autoplay prevented by browser:', err);
+        });
+      }
+    }
+  }, [activeCategory, heroTab]);
 
   const CITIES = ['All Cities', 'Udaipur, Rajasthan', 'Bangalore', 'Delhi', 'Mumbai', 'Pune', 'Hyderabad', 'Chennai', 'Gurgaon'];
 
@@ -96,54 +144,85 @@ export const CategoryHeader: React.FC<CategoryHeaderProps> = ({
     else setMaxBudget(250000);
   };
 
+  const getHeroBgImage = (category: MainCategory, tab: string) => {
+    if (category === 'all') {
+      return 'https://images.unsplash.com/photo-1505843513577-22bb7d21e455?q=80&w=1032&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'; // Grand Masterpiece Luxury Estate with Infinity Pool & Panoramic Skyline
+    }
+    if (category === 'vehicle' || tab === 'vehicles') {
+      return 'https://images.pexels.com/photos/18503513/pexels-photo-18503513.jpeg'; // Dark Cinematic Luxury Black Sedan
+    }
+    if (category === 'restaurant') {
+      return 'https://media.istockphoto.com/id/528134869/photo/night-view-of-placa-reial.jpg?s=1024x1024&w=is&k=20&c=KDM_c5ST2_LnPXCgu0my_u4uhd6t3lwRCJaCVhg-VPw='; // Gourmet Dining Table Feast
+    }
+    if (category === 'commercial' || category === 'general') {
+      return 'https://images.unsplash.com/photo-1562813733-b31f71025d54?q=80&w=869&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D'; // Office Desktop Essentials Flatlay
+    }
+    if (category === 'library') {
+      return 'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?auto=format&fit=crop&w=1200&q=80'; // Vintage Grand Wooden Library
+    }
+    if (category === 'hotel') {
+      return 'https://media.istockphoto.com/id/472899538/photo/downtown-cleveland-hotel-entrance-and-waiting-taxi-cab.jpg?s=1024x1024&w=is&k=20&c=ryknwrnjVy-mkmHvN-6lG2my5hbpDn2h3AHa76_BX28=';
+    }
+    if (category === 'clothing') {
+      return 'https://images.unsplash.com/photo-1567401893414-76b7b1e5a7a5?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D';
+    }
+    if (category === 'sports_turf') {
+      return 'https://media.istockphoto.com/id/172939385/photo/three-10k-runners-in-motion.jpg?s=1024x1024&w=is&k=20&c=-wCcqttMEz--HWJUnrzgpkY6ICCpzHgNcBHXA3Tb2jk=';
+    }
+    // Default Heritage Castle Villa / Property:
+    return 'https://images.pexels.com/photos/38765009/pexels-photo-38765009.jpeg';
+  };
+
   return (
-    <div className="w-full bg-[#FAF8F5] dark:bg-zinc-950 text-slate-900 dark:text-white pt-6 pb-8 transition-colors">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
+    <div className="w-full bg-[#FAF8F5] dark:bg-zinc-950 text-slate-900 dark:text-white pt-4 sm:pt-6 pb-6 sm:pb-8 transition-colors max-w-full overflow-hidden">
+      <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 space-y-6 sm:space-y-8">
         
-        {/* HERO BANNER CARD */}
-        <div className="relative bg-gradient-to-r from-slate-50 via-amber-50/30 to-slate-100 dark:from-zinc-900 dark:via-zinc-900 dark:to-zinc-800 rounded-3xl overflow-hidden border border-slate-200/80 dark:border-zinc-800 shadow-xl min-h-[440px] flex items-center">
+        {/* HERO BANNER CARD WITH DYNAMIC CATEGORY BACKGROUND ARCHITECTURE */}
+        <div className="relative bg-gradient-to-r from-slate-950 via-zinc-900 to-slate-900 text-white rounded-3xl overflow-hidden border border-zinc-800 shadow-2xl min-h-fit sm:min-h-[460px] flex items-center transition-all duration-500">
           
-          {/* Background Building Image (Right Aligned with Soft Gradient Blend) */}
-          <div className="absolute top-0 right-0 w-full lg:w-1/2 h-full pointer-events-none z-0">
+          {/* Dynamic Background Image per Category (80% Opacity with Slow Motion Effect) */}
+          <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
             <img
-              src="https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1200&q=80"
-              alt="Modern Residential Apartment Building"
-              className="w-full h-full object-cover object-center opacity-90 dark:opacity-80"
+              key={getHeroBgImage(activeCategory, heroTab)}
+              src={getHeroBgImage(activeCategory, heroTab)}
+              alt={`${activeCategory} Category Background`}
+              className="w-full h-full object-cover object-center animate-slow-motion transition-transform duration-1000 ease-out hover:scale-100"
             />
-            {/* Smooth Left Gradient Blend Mask */}
-            <div className="absolute inset-0 bg-gradient-to-r from-slate-50 via-slate-50/80 to-transparent dark:from-zinc-900 dark:via-zinc-900/80 dark:to-transparent" />
-            
-            {/* Pinned Badge on Building */}
-            <div className="absolute top-8 right-8 z-10 hidden sm:block">
+            {/* Soft Transparent Mask for Text Legibility while keeping image 80% visible */}
+            <div className="absolute inset-0 bg-gradient-to-r from-slate-950/85 via-slate-950/40 to-transparent pointer-events-none" />
+            <div className="absolute inset-0 bg-radial from-transparent to-slate-950/30 pointer-events-none" />
+
+            {/* Pinned Radar Badge on Building */}
+            <div className="absolute top-6 right-6 z-10 hidden sm:block pointer-events-auto">
               <button
                 type="button"
                 onClick={onOpenRadar}
-                className="bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 text-slate-950 font-black text-xs px-4 py-2.5 rounded-2xl shadow-lg border border-amber-300 flex items-center space-x-2 animate-in fade-in zoom-in-95 duration-300 cursor-pointer hover:scale-105 transition-all"
+                className="bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 text-white font-black text-xs px-4 py-2.5 rounded-2xl shadow-xl border border-blue-400 flex items-center space-x-2 animate-in fade-in zoom-in-95 duration-300 cursor-pointer hover:scale-105 transition-all"
               >
-                <MapPin className="h-4 w-4 text-slate-950 fill-slate-950" />
-                <span>Find Properties Within 5 - 50 km</span>
+                <MapPin className="h-4 w-4 text-white fill-white" />
+                <span>Find Assets Within 5 - 50 km Radar</span>
               </button>
             </div>
           </div>
 
           {/* Left Content Area */}
-          <div className="relative z-10 w-full lg:w-3/5 p-6 sm:p-10 space-y-6">
+          <div className="relative z-10 w-full lg:w-3/5 p-4 sm:p-8 lg:p-10 space-y-4 sm:space-y-6">
             
             {/* Headline */}
             <div>
-              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-slate-900 dark:text-white leading-none">
-                Recko <span className="text-amber-500">India</span>
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight text-white leading-none drop-shadow-lg">
+                Recko <span className="text-yellow-400 font-black">India</span>
               </h1>
-              <h2 className="text-xl sm:text-2xl font-black text-slate-800 dark:text-zinc-200 mt-1">
+              <h2 className="text-2xl sm:text-3xl font-black text-white mt-1.5 drop-shadow-md">
                 Your Perfect Rental Partner
               </h2>
-              <p className="text-xs sm:text-sm text-slate-600 dark:text-zinc-400 mt-2 font-medium max-w-md leading-relaxed">
-                Find the perfect property, PG, hostel, or vehicle near you with ease.
+              <p className="text-xs sm:text-sm text-white font-bold mt-2 max-w-md leading-relaxed drop-shadow-md">
+                Find the perfect property, PG, hostel, luxury villa, or vehicle near you with ease.
               </p>
             </div>
 
             {/* Properties vs Vehicles Toggle Pills */}
-            <div className="flex items-center space-x-2 bg-slate-200/80 dark:bg-zinc-800 p-1 rounded-2xl w-fit border border-slate-300/60 dark:border-zinc-700">
+            <div className="flex items-center space-x-2 bg-slate-900/90 backdrop-blur-md p-1 rounded-2xl w-fit border border-zinc-800 shadow-inner">
               <button
                 onClick={() => {
                   setHeroTab('properties');
@@ -152,8 +231,8 @@ export const CategoryHeader: React.FC<CategoryHeaderProps> = ({
                 }}
                 className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
                   heroTab === 'properties' && activeCategory !== 'vehicle'
-                    ? 'bg-zinc-950 text-white shadow-md'
-                    : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+                    ? 'bg-blue-600 text-white shadow-md scale-[1.02]'
+                    : 'text-slate-300 hover:text-white'
                 }`}
               >
                 <Home className="h-4 w-4" />
@@ -168,8 +247,8 @@ export const CategoryHeader: React.FC<CategoryHeaderProps> = ({
                 }}
                 className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer ${
                   heroTab === 'vehicles' || activeCategory === 'vehicle'
-                    ? 'bg-zinc-950 text-white shadow-md'
-                    : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+                    ? 'bg-blue-600 text-white shadow-md scale-[1.02]'
+                    : 'text-slate-300 hover:text-white'
                 }`}
               >
                 <Car className="h-4 w-4" />
@@ -177,114 +256,85 @@ export const CategoryHeader: React.FC<CategoryHeaderProps> = ({
               </button>
             </div>
 
-            {/* Search Filter Card */}
-            <div className="bg-white dark:bg-zinc-900 p-3 sm:p-4 rounded-3xl border border-slate-200 dark:border-zinc-800 shadow-xl grid grid-cols-1 sm:grid-cols-12 gap-3 text-xs font-bold text-slate-800 dark:text-zinc-200">
+            {/* Clean High-Contrast Single Unified Search Bar */}
+            <div className="bg-white dark:bg-zinc-900 p-2 sm:p-2.5 rounded-3xl border border-slate-300 dark:border-zinc-700 shadow-2xl flex flex-col sm:flex-row items-center gap-2">
               
-              {/* Location Select Dropdown */}
-              <div className="sm:col-span-3 bg-slate-50 dark:bg-zinc-800/80 p-2.5 rounded-2xl border border-slate-200 dark:border-zinc-700">
-                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
-                  Location
-                </label>
-                <div className="flex items-center space-x-1.5">
-                  <MapPin className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                  <select
-                    value={selectedCity || 'All Cities'}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      setSelectedCity(val === 'All Cities' ? '' : val);
-                    }}
-                    className="w-full bg-transparent font-black text-xs text-slate-900 dark:text-white outline-hidden cursor-pointer"
-                  >
-                    {CITIES.map((c) => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Radius Dropdown */}
-              <div className="sm:col-span-2 bg-slate-50 dark:bg-zinc-800/80 p-2.5 rounded-2xl border border-slate-200 dark:border-zinc-700">
-                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
-                  Radius
-                </label>
-                <select
-                  value={radius}
-                  onChange={(e) => setRadius(e.target.value)}
-                  className="w-full bg-transparent font-black text-xs text-slate-900 dark:text-white outline-hidden cursor-pointer"
-                >
-                  <option value="5 km">5 km</option>
-                  <option value="10 km">10 km</option>
-                  <option value="25 km">25 km</option>
-                  <option value="50 km">50 km</option>
-                </select>
-              </div>
-
-              {/* Property / Vehicle Type Dropdown */}
-              <div className="sm:col-span-3 bg-slate-50 dark:bg-zinc-800/80 p-2.5 rounded-2xl border border-slate-200 dark:border-zinc-700">
-                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
-                  Category Type
-                </label>
-                <select
-                  value={selectedSubType}
-                  onChange={(e) => setSelectedSubType(e.target.value)}
-                  className="w-full bg-transparent font-black text-xs text-slate-900 dark:text-white outline-hidden cursor-pointer"
-                >
-                  <option value="ALL">All Types</option>
-                  <option value="flat">Flats / Apartments</option>
-                  <option value="house">Independent House</option>
-                  <option value="pg">PG & Hostels</option>
-                  <option value="villa">Luxury Villas</option>
-                  <option value="shop">Shops & Showrooms</option>
-                  <option value="office">Offices</option>
-                  <option value="bike">Bikes & Scooters</option>
-                  <option value="car">Self-Drive Cars</option>
-                </select>
-              </div>
-
-              {/* Budget Range Dropdown */}
-              <div className="sm:col-span-2 bg-slate-50 dark:bg-zinc-800/80 p-2.5 rounded-2xl border border-slate-200 dark:border-zinc-700">
-                <label className="block text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">
-                  Budget
-                </label>
-                <select
-                  value={budgetLabel}
-                  onChange={(e) => handleBudgetChange(e.target.value)}
-                  className="w-full bg-transparent font-black text-xs text-slate-900 dark:text-white outline-hidden cursor-pointer"
-                >
-                  <option value="₹ 0 - ₹ 2,50,000+">All Budgets</option>
-                  <option value="₹ 0 - ₹ 10,000">₹ 0 - ₹ 10,000</option>
-                  <option value="₹ 0 - ₹ 25,000">₹ 0 - ₹ 25,000</option>
-                  <option value="₹ 0 - ₹ 50,000">₹ 0 - ₹ 50,000</option>
-                </select>
-              </div>
-
-              {/* Golden Yellow Search Button */}
-              <div className="sm:col-span-2 flex items-center">
+            {/* Main Search Input Field (Light Background, Black High-Contrast Text) */}
+            <div className="flex-1 flex items-center space-x-3 px-4 py-3 bg-slate-100 dark:bg-zinc-800 rounded-2xl border border-slate-300 dark:border-zinc-700 w-full shadow-inner">
+              <Search className="h-5 w-5 text-blue-600 dark:text-blue-400 shrink-0 stroke-[2.5]" />
+              <input
+                type="text"
+                placeholder={isListening ? '🎙️ Listening... Speak now in Hindi or English...' : 'Search 2 BHK flat, Creta car, Sherwani, PG, Turf, Hotel near you...'}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-transparent font-extrabold text-xs sm:text-sm text-slate-950 dark:text-white placeholder:text-slate-500 dark:placeholder:text-zinc-400 outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleStartVoiceSearch}
+                className={`px-2.5 py-1.5 rounded-xl border transition-all cursor-pointer flex items-center space-x-1 shrink-0 ${
+                  isListening
+                    ? 'bg-rose-600 text-white animate-pulse border-rose-400 font-bold'
+                    : 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-400/40 hover:bg-blue-600 hover:text-white font-bold'
+                }`}
+                title="Voice Search (Speak Hindi or English)"
+              >
+                <Mic className="h-4 w-4" />
+                <span className="text-[10px] font-black hidden sm:inline">{isListening ? 'Listening' : 'Voice'}</span>
+              </button>
+              {searchQuery && (
                 <button
-                  onClick={() => {
-                    if (searchQuery.trim() === '') {
-                      setSelectedSubType('ALL');
-                    }
-                  }}
-                  className="w-full h-full min-h-[42px] bg-amber-400 hover:bg-amber-300 text-zinc-950 font-black text-xs px-4 py-2.5 rounded-2xl transition-all shadow-md flex items-center justify-center space-x-1.5 cursor-pointer border border-amber-300"
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="text-slate-500 hover:text-slate-950 dark:hover:text-white font-black text-xs p-1"
                 >
-                  <Search className="h-4 w-4 stroke-[3]" />
-                  <span>Search Now</span>
+                  ✕
                 </button>
+              )}
+            </div>
+
+              {/* City Location Text Box Input (Light Background, High Contrast) */}
+              <div className="flex items-center space-x-2 px-3.5 py-3 bg-slate-100 dark:bg-zinc-800 rounded-2xl border border-slate-300 dark:border-zinc-700 shrink-0 w-full sm:w-48 shadow-inner">
+                <MapPin className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 stroke-[2.5]" />
+                <input
+                  type="text"
+                  placeholder="Enter City / Area..."
+                  value={selectedCity}
+                  onChange={(e) => setSelectedCity(e.target.value)}
+                  className="w-full bg-transparent font-black text-xs text-slate-950 dark:text-white placeholder:text-slate-500 dark:placeholder:text-zinc-400 outline-none"
+                />
+                {selectedCity && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedCity('')}
+                    className="text-slate-500 hover:text-slate-950 dark:hover:text-white font-black text-xs"
+                  >
+                    ✕
+                  </button>
+                )}
               </div>
+
+              {/* High-Contrast Bright Blue Search Button */}
+              <button
+                type="button"
+                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-black text-xs sm:text-sm px-7 py-3.5 rounded-2xl transition-all shadow-lg shadow-blue-600/30 flex items-center justify-center space-x-2 cursor-pointer border border-blue-400 shrink-0 hover:scale-102 active:scale-98"
+              >
+                <Search className="h-4 w-4 stroke-[3]" />
+                <span>Search</span>
+              </button>
             </div>
 
             {/* Smart Finder AI Black Bar */}
             <div className="bg-zinc-950 text-white p-3.5 rounded-2xl border border-zinc-800 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-center space-x-2.5">
                 <div className="bg-zinc-900 p-2 rounded-xl border border-zinc-800 shrink-0">
-                  <Sparkles className="h-4 w-4 text-amber-400 animate-pulse" />
+                  <Sparkles className="h-4 w-4 text-yellow-400 animate-pulse" />
                 </div>
                 <div>
-                  <span className="font-extrabold text-xs text-amber-400 block sm:inline mr-2">
+                  <span className="font-extrabold text-xs text-yellow-400 block sm:inline mr-2">
                     Smart Finder AI
                   </span>
-                  <span className="text-[11px] text-zinc-300 font-medium">
+                  <span className="text-[11px] text-white font-semibold">
                     Describe what you want in natural language and AI will find the best options for you.
                   </span>
                 </div>
@@ -294,7 +344,7 @@ export const CategoryHeader: React.FC<CategoryHeaderProps> = ({
           </div>
         </div>
 
-        {/* MAIN CATEGORY NAVIGATION ROW */}
+        {/* MAIN CATEGORY NAVIGATION ROW (High Contrast Black Text & Strong Border) */}
         <div className="flex items-center space-x-2 overflow-x-auto pb-2 pt-1 scrollbar-none">
           {mainCategoryTabs.map((tab) => (
             <button
@@ -306,8 +356,8 @@ export const CategoryHeader: React.FC<CategoryHeaderProps> = ({
               }}
               className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl text-xs font-black transition-all shrink-0 cursor-pointer border ${
                 activeCategory === tab.id
-                  ? 'bg-zinc-950 dark:bg-amber-400 text-white dark:text-zinc-950 border-zinc-900 dark:border-amber-300 shadow-md scale-[1.02]'
-                  : 'bg-white dark:bg-zinc-900 text-slate-700 dark:text-zinc-300 border-slate-200 dark:border-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-800'
+                  ? 'bg-blue-600 text-white border-blue-500 shadow-md scale-[1.02]'
+                  : 'bg-white dark:bg-zinc-900 text-slate-950 dark:text-white border-slate-300 dark:border-zinc-700 hover:bg-slate-100 dark:hover:bg-zinc-800 shadow-xs'
               }`}
             >
               {tab.icon}
@@ -316,28 +366,47 @@ export const CategoryHeader: React.FC<CategoryHeaderProps> = ({
           ))}
         </div>
 
-        {/* QUICK CATEGORY ICON CARDS ROW */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 gap-3">
-          {quickCategories.map((cat) => (
-            <button
-              key={cat.label}
-              onClick={() => {
-                setActiveCategory(cat.cat);
-                setSelectedSubType(cat.subType);
-                setSearchQuery('');
-              }}
-              className={`bg-white dark:bg-zinc-900 hover:bg-amber-50 dark:hover:bg-zinc-800/80 p-3.5 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-xs flex flex-col items-center justify-center space-y-2 transition-all cursor-pointer group ${
-                activeCategory === cat.cat && selectedSubType === cat.subType ? 'ring-2 ring-amber-400 bg-amber-50/50 dark:bg-zinc-800' : ''
-              }`}
-            >
-              <div className="p-2 rounded-xl bg-amber-100/60 dark:bg-zinc-800 group-hover:scale-110 transition-transform">
-                {cat.icon}
-              </div>
-              <span className="text-xs font-black text-slate-800 dark:text-zinc-200 tracking-tight">
-                {cat.label}
-              </span>
-            </button>
-          ))}
+        {/* RECKO INDIA PREMIUM HIGHLIGHTS & TRUST BADGE SHOWCASE */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+          <div className="bg-white/80 dark:bg-zinc-900/90 backdrop-blur-md p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-xs flex items-center space-x-3.5 hover-lift hover-glow-amber cursor-pointer group">
+            <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform shrink-0">
+              <ShieldCheck className="h-5 w-5 stroke-[2.5]" />
+            </div>
+            <div className="min-w-0">
+              <h5 className="font-black text-xs text-slate-900 dark:text-white truncate">0% Brokerage Guarantee</h5>
+              <p className="text-[11px] text-slate-500 dark:text-zinc-400 font-medium truncate">100% Verified Direct Owners</p>
+            </div>
+          </div>
+
+          <div className="bg-white/80 dark:bg-zinc-900/90 backdrop-blur-md p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-xs flex items-center space-x-3.5 hover-lift hover-glow-amber cursor-pointer group">
+            <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 group-hover:scale-110 transition-transform shrink-0">
+              <Clock className="h-5 w-5 stroke-[2.5]" />
+            </div>
+            <div className="min-w-0">
+              <h5 className="font-black text-xs text-slate-900 dark:text-white truncate">Flexible Rent Duration</h5>
+              <p className="text-[11px] text-slate-500 dark:text-zinc-400 font-medium truncate">Hourly, Daily & Monthly Stays</p>
+            </div>
+          </div>
+
+          <div className="bg-white/80 dark:bg-zinc-900/90 backdrop-blur-md p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-xs flex items-center space-x-3.5 hover-lift hover-glow-indigo cursor-pointer group">
+            <div className="p-2.5 rounded-xl bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform shrink-0">
+              <Shield className="h-5 w-5 stroke-[2.5]" />
+            </div>
+            <div className="min-w-0">
+              <h5 className="font-black text-xs text-slate-900 dark:text-white truncate">NPCI Escrow & Live GPS</h5>
+              <p className="text-[11px] text-slate-500 dark:text-zinc-400 font-medium truncate">Safe UPI + Telematics Tracking</p>
+            </div>
+          </div>
+
+          <div className="bg-white/80 dark:bg-zinc-900/90 backdrop-blur-md p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-xs flex items-center space-x-3.5 hover-lift hover-glow-amber cursor-pointer group">
+            <div className="p-2.5 rounded-xl bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 group-hover:scale-110 transition-transform shrink-0">
+              <Sparkles className="h-5 w-5 stroke-[2.5]" />
+            </div>
+            <div className="min-w-0">
+              <h5 className="font-black text-xs text-slate-900 dark:text-white truncate">AI Smart Recommender</h5>
+              <p className="text-[11px] text-slate-500 dark:text-zinc-400 font-medium truncate">Intelligent Search & Match</p>
+            </div>
+          </div>
         </div>
 
       </div>

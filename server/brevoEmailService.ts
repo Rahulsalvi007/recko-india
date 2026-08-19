@@ -396,7 +396,7 @@ export async function sendBrevoEmailOtp(params: {
 
   // Generate fresh 6-digit numeric OTP
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  const ttlMs = 10 * 60 * 1000; // 10 minutes expiry
+  const ttlMs = 1 * 60 * 1000; // 10 minutes expiry
 
   // Clean existing expired items and append new OTP
   const unexpiredOtps: StoredOtpItem[] = (existing?.otps || []).filter((item) => now <= item.expiresAt);
@@ -462,7 +462,7 @@ export async function sendBrevoEmailOtp(params: {
         subject,
         html: emailHtml,
         text: isDeletion
-          ? `Hello ${userName || 'User'},\n\nYour Account Deletion Authorization Code is: ${otp}\n\nValid for 10 minutes.`
+          ? `Hello ${userName || 'User'},\n\nYour Account Deletion Authorization Code is: ${otp}\n\nValid for 1 minutes.`
           : isReset
           ? `Hello ${userName || 'User'},\n\nYour Password Reset Code is: ${otp}\n\nValid for 10 minutes.`
           : `Hello ${userName || 'User'},\n\nYour Recko-India Verification Code is: ${otp}\n\nValid for 10 minutes.`

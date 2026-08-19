@@ -100,9 +100,12 @@ export const VehicleTrackingModal: React.FC<VehicleTrackingModalProps> = ({
                 <span className="bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-500/30">
                   LIVE GPS
                 </span>
+                <span className="bg-amber-500/20 text-amber-300 text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full border border-amber-500/40">
+                  🔒 RESTRICTED OWNER TELEMETRY
+                </span>
               </div>
               <p className="text-xs text-slate-400 font-mono mt-0.5">
-                License Plate: <span className="text-amber-400 font-bold">{vehicle.licensePlate}</span> • ID: {vehicle.id}
+                License Plate: <span className="text-amber-400 font-bold">{vehicle.licensePlate}</span> • Registered Owner Access Only
               </p>
             </div>
           </div>

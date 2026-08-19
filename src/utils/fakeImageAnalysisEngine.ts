@@ -145,8 +145,10 @@ export function scanAllAssetsForDuplicateImages(assets: AllSystemAssets): Duplic
   // Filter out unique images, keep duplicates
   const incidents: DuplicateImageIncident[] = [];
 
+  let incidentCount = 0;
   imageMap.forEach((entry, sig) => {
     if (entry.occurrences.length > 1) {
+      incidentCount++;
       const original = entry.occurrences[0];
       const duplicates = entry.occurrences.slice(1);
 
@@ -155,7 +157,7 @@ export function scanAllAssetsForDuplicateImages(assets: AllSystemAssets): Duplic
       const isCrossOwner = uniqueOwnerContacts.size > 1;
 
       const incident: DuplicateImageIncident = {
-        id: `dup-${sig.slice(0, 16)}-${Date.now().toString(36).slice(-4)}`,
+        id: `dup-${sig.slice(0, 16)}-${incidentCount}-${Math.random().toString(36).slice(2, 7)}`,
         imageUrl: entry.url,
         imageSignature: sig,
         detectedAt: new Date().toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }),

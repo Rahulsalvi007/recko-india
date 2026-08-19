@@ -47,26 +47,26 @@ export const LibraryDetailModal: React.FC<LibraryDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#FAF7F2] dark:bg-zinc-950 text-slate-900 dark:text-white overflow-y-auto w-full h-full min-h-screen">
+    <div className="fixed inset-0 z-50 bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-white overflow-y-auto w-full h-full min-h-screen">
       <div className="w-full min-h-screen flex flex-col">
         
         {/* Header Bar */}
-        <div className="bg-[#0C1017] text-[#FAF7F2] p-5 sm:p-6 flex justify-between items-center border-b border-slate-800 sticky top-0 z-40 shadow-md">
+        <div className="bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md text-slate-900 dark:text-white p-5 sm:p-6 flex justify-between items-center border-b border-slate-200 dark:border-zinc-800 sticky top-0 z-40 shadow-xs">
           <div className="flex items-center space-x-3">
             <button
               onClick={onClose}
-              className="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer border border-slate-700"
+              className="flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-800 dark:text-zinc-200 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer border border-slate-200 dark:border-zinc-700"
             >
               <X className="h-4 w-4" />
               <span>← Back to Libraries</span>
             </button>
             <div>
-              <h2 className="text-xl sm:text-2xl font-black">{library.title}</h2>
-              <div className="flex items-center space-x-2 text-slate-300 text-xs font-semibold mt-0.5">
-                <MapPin className="h-3.5 w-3.5 text-amber-300 shrink-0" />
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{library.title}</h2>
+              <div className="flex items-center space-x-2 text-slate-500 dark:text-zinc-400 text-xs font-semibold mt-0.5">
+                <MapPin className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
                 <span>{library.location}, {library.city}</span>
                 <span>•</span>
-                <div className="flex items-center space-x-1 text-amber-400 font-bold">
+                <div className="flex items-center space-x-1 text-amber-500 dark:text-amber-400 font-bold">
                   <Star className="h-3.5 w-3.5 fill-current" />
                   <span>{library.rating} ({library.reviewsCount} reviews)</span>
                 </div>
@@ -76,45 +76,45 @@ export const LibraryDetailModal: React.FC<LibraryDetailModalProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="p-5 sm:p-8 space-y-6 max-h-[75vh] overflow-y-auto text-slate-900">
+        <div className="p-5 sm:p-8 space-y-6 max-h-[75vh] overflow-y-auto text-slate-900 dark:text-white">
           
           {/* Images & Capacity */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-2 h-60 rounded-2xl overflow-hidden bg-slate-900">
+            <div className="sm:col-span-2 h-60 rounded-2xl overflow-hidden bg-slate-100 dark:bg-zinc-900">
               <img src={library.images[0]} alt={library.title} className="w-full h-full object-cover" />
             </div>
 
-            <div className="bg-white p-5 rounded-2xl border border-[#E5E0D8] flex flex-col justify-between">
+            <div className="bg-white dark:bg-zinc-900 p-5 rounded-2xl border border-slate-200 dark:border-zinc-800 flex flex-col justify-between shadow-xs">
               <div>
                 <span className="text-xs font-extrabold text-slate-400 uppercase tracking-wider block">Live Seat Count</span>
-                <p className="text-2xl font-black text-slate-950 mt-0.5">
+                <p className="text-2xl font-black text-slate-950 dark:text-white mt-0.5">
                   {library.availableSeats} <span className="text-xs text-slate-500 font-medium">/ {library.totalSeats} seats free</span>
                 </p>
               </div>
 
               <div className="my-3">
                 <span className="text-xs font-extrabold text-slate-400 uppercase tracking-wider block">Private Cabins</span>
-                <p className="text-xs font-bold text-slate-800 mt-0.5">{library.availableCabins} of {library.totalCabins} cabins free</p>
+                <p className="text-xs font-bold text-slate-800 dark:text-zinc-200 mt-0.5">{library.availableCabins} of {library.totalCabins} cabins free</p>
               </div>
 
               <button
                 onClick={() => onOpenMap(library)}
-                className="w-full bg-[#151B26] hover:bg-black text-[#FAF7F2] font-black text-xs py-2.5 rounded-xl transition-all flex items-center justify-center space-x-1.5"
+                className="w-full bg-slate-950 hover:bg-slate-900 dark:bg-blue-600 dark:hover:bg-blue-500 text-white font-black text-xs py-2.5 rounded-xl transition-all flex items-center justify-center space-x-1.5 shadow-sm"
               >
-                <Navigation className="h-4 w-4 text-amber-300" />
+                <Navigation className="h-4 w-4" />
                 <span>View Distance</span>
               </button>
             </div>
           </div>
 
           {/* Description */}
-          <p className="text-xs sm:text-sm text-slate-700 font-medium leading-relaxed bg-white p-4 rounded-2xl border border-[#E5E0D8]">
+          <p className="text-xs sm:text-sm text-slate-700 dark:text-zinc-300 font-medium leading-relaxed bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-xs">
             {library.description}
           </p>
 
           {/* Membership Pass Chooser */}
-          <div className="bg-[#151B26] text-[#FAF7F2] p-5 rounded-3xl border border-slate-800 space-y-4">
-            <h3 className="text-sm font-black text-amber-200 uppercase tracking-wider flex items-center space-x-2">
+          <div className="bg-slate-900 dark:bg-zinc-900 text-white p-5 rounded-3xl border border-slate-800 dark:border-zinc-800 space-y-4">
+            <h3 className="text-sm font-black text-blue-400 uppercase tracking-wider flex items-center space-x-2">
               <QrCode className="h-4 w-4" />
               <span>Select Membership Pass & Instant QR Generation</span>
             </h3>
@@ -125,13 +125,13 @@ export const LibraryDetailModal: React.FC<LibraryDetailModalProps> = ({
                 <div
                   key={pass}
                   onClick={() => setSelectedPassType(pass)}
-                  className={`p-4 rounded-2xl border-2 transition-all cursor-pointer ${
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer ${
                     selectedPassType === pass
-                      ? 'border-amber-300 bg-[#222B3B] text-white shadow-lg'
-                      : 'border-slate-800 bg-[#1A212E] text-slate-300 hover:bg-[#222B3B]'
+                      ? 'border-blue-500 bg-slate-800 text-white shadow-lg ring-2 ring-blue-500/30'
+                      : 'border-slate-800 bg-slate-950/60 text-slate-300 hover:bg-slate-800'
                   }`}
                 >
-                  <span className="text-xs font-extrabold uppercase tracking-wider block text-amber-300">{pass}</span>
+                  <span className="text-xs font-extrabold uppercase tracking-wider block text-blue-400">{pass}</span>
                   <p className="text-2xl font-black mt-1">₹{priceMap[pass]}</p>
                   <p className="text-[10px] text-slate-400 font-medium mt-1">Includes AC, Wi-Fi & Seat Pass</p>
                 </div>
@@ -146,7 +146,7 @@ export const LibraryDetailModal: React.FC<LibraryDetailModalProps> = ({
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full bg-[#222B3B] border border-slate-700 rounded-xl px-3 py-2 text-xs font-extrabold text-white outline-none focus:ring-2 focus:ring-amber-300"
+                  className="w-full bg-slate-800 dark:bg-zinc-800 border border-slate-700 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs font-extrabold text-white outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -155,7 +155,7 @@ export const LibraryDetailModal: React.FC<LibraryDetailModalProps> = ({
                 <select
                   value={allocatedSeatNumber}
                   onChange={(e) => setAllocatedSeatNumber(e.target.value)}
-                  className="w-full bg-[#222B3B] border border-slate-700 rounded-xl px-3 py-2 text-xs font-extrabold text-white outline-none focus:ring-2 focus:ring-amber-300"
+                  className="w-full bg-slate-800 dark:bg-zinc-800 border border-slate-700 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs font-extrabold text-white outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="Bay-A / Desk #04 (Quiet Bay)">Bay-A / Desk #04 (Silent Zone)</option>
                   <option value="Bay-B / Desk #14 (Window View)">Bay-B / Desk #14 (Window View)</option>
@@ -169,14 +169,14 @@ export const LibraryDetailModal: React.FC<LibraryDetailModalProps> = ({
             <div className="flex flex-col sm:flex-row items-center justify-between pt-3 border-t border-slate-800 gap-3">
               <div>
                 <span className="text-xs text-slate-400 font-bold">Total Pass Cost:</span>
-                <p className="text-2xl font-black text-[#FAF7F2]">₹{currentPrice}</p>
+                <p className="text-2xl font-black text-white">₹{currentPrice}</p>
               </div>
 
               <button
                 onClick={handleBookPass}
-                className="w-full sm:w-auto bg-[#FAF7F2] hover:bg-white text-slate-950 font-black text-sm px-8 py-3 rounded-2xl transition-all cursor-pointer shadow-lg flex items-center justify-center space-x-2"
+                className="w-full sm:w-auto bg-blue-600 hover:bg-blue-500 text-white font-black text-sm px-8 py-3 rounded-2xl transition-all cursor-pointer shadow-lg flex items-center justify-center space-x-2 border border-blue-400"
               >
-                <QrCode className="h-4 w-4 text-slate-950" />
+                <QrCode className="h-4 w-4 text-white" />
                 <span>Confirm Pass & Generate QR Code</span>
               </button>
             </div>

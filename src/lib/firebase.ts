@@ -20,7 +20,9 @@ import {
   updateDoc,
   deleteDoc,
   query,
-  orderBy
+  orderBy,
+  getDoc,
+  writeBatch
 } from 'firebase/firestore';
 
 import firebaseConfig from '../../firebase-applet-config.json';
@@ -40,9 +42,13 @@ import {
 // Initialize Firebase App
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Firebase Auth & Firestore Instances
+// Firebase Auth & Firestore Instances (Binds directly to custom databaseId or default)
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || undefined);
+
+const targetDbId = firebaseConfig.firestoreDatabaseId;
+export const db = (targetDbId && targetDbId !== 'default')
+  ? getFirestore(app, targetDbId)
+  : getFirestore(app);
 
 // Google Auth Provider
 const googleProvider = new GoogleAuthProvider();
@@ -133,6 +139,42 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 }
 
 /**
+ * Live Firestore Connectivity Tester
+ */
+export const testFirestoreConnection = async (): Promise<{ success: boolean; message: string; databaseId: string }> => {
+  const databaseId = firebaseConfig.firestoreDatabaseId || 'default';
+  try {
+    const pingRef = doc(db, 'system_config', 'connection_ping');
+    await setDoc(pingRef, {
+      lastPing: new Date().toISOString(),
+      status: 'active',
+      clientVersion: '2.0.0'
+    }, { merge: true });
+    
+    const snap = await getDoc(pingRef);
+    if (snap.exists()) {
+      return {
+        success: true,
+        message: `Connected successfully to Firestore database: ${databaseId}`,
+        databaseId
+      };
+    }
+    return {
+      success: true,
+      message: `Write succeeded to Firestore database: ${databaseId}`,
+      databaseId
+    };
+  } catch (error: any) {
+    console.error('Firestore connection test failed:', error);
+    return {
+      success: false,
+      message: error?.message || 'Failed to connect to Firestore. Check permissions or network.',
+      databaseId
+    };
+  }
+};
+
+/**
  * Real-time Firestore Sync Helpers
  */
 
@@ -146,9 +188,10 @@ export const subscribeCollection = <T>(
     snapshot.forEach((docSnap) => {
       items.push({ id: docSnap.id, ...docSnap.data() } as T);
     });
+    console.log(`🔥 [Firestore Real-Time Fetch] Loaded ${items.length} records from '${collectionName}'`);
     callback(items);
   }, (error) => {
-    console.warn(`Firestore subscription error for ${collectionName}:`, error);
+    console.warn(`Firestore subscription notice for ${collectionName}:`, error);
     try {
       handleFirestoreError(error, OperationType.LIST, collectionName);
     } catch (e) {
@@ -177,12 +220,17 @@ export const cleanUndefinedFields = (obj: any): any => {
 };
 
 export const saveDocument = async (collectionName: string, docId: string, data: any) => {
-  const docRef = doc(db, collectionName, docId);
+  const safeId = docId || `doc-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+  const docRef = doc(db, collectionName, safeId);
   const sanitizedData = cleanUndefinedFields(data);
   try {
     await setDoc(docRef, sanitizedData, { merge: true });
+    console.log(`🔥 [Firestore Save Success] Saved document to ${collectionName}/${safeId}`);
+    return { success: true, id: safeId };
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, `${collectionName}/${docId}`);
+    console.warn(`⚠️ [Firestore Save Fallback Notice] ${collectionName}/${safeId}:`, error);
+    const errInfo = handleFirestoreError(error, OperationType.WRITE, `${collectionName}/${safeId}`);
+    return { success: false, error: errInfo.error, id: safeId };
   }
 };
 
@@ -191,8 +239,12 @@ export const updateDocument = async (collectionName: string, docId: string, data
   const sanitizedData = cleanUndefinedFields(data);
   try {
     await updateDoc(docRef, sanitizedData);
+    console.log(`🔥 [Firestore Update Success] Updated document ${collectionName}/${docId}`);
+    return { success: true };
   } catch (error) {
-    handleFirestoreError(error, OperationType.UPDATE, `${collectionName}/${docId}`);
+    console.warn(`⚠️ [Firestore Update Fallback Notice] ${collectionName}/${docId}:`, error);
+    const errInfo = handleFirestoreError(error, OperationType.UPDATE, `${collectionName}/${docId}`);
+    return { success: false, error: errInfo.error };
   }
 };
 
@@ -200,8 +252,206 @@ export const deleteDocument = async (collectionName: string, docId: string) => {
   const docRef = doc(db, collectionName, docId);
   try {
     await deleteDoc(docRef);
+    console.log(`🔥 [Firestore Delete Success] Deleted document ${collectionName}/${docId}`);
+    return { success: true };
   } catch (error) {
-    handleFirestoreError(error, OperationType.DELETE, `${collectionName}/${docId}`);
+    console.warn(`⚠️ [Firestore Delete Fallback Notice] ${collectionName}/${docId}:`, error);
+    const errInfo = handleFirestoreError(error, OperationType.DELETE, `${collectionName}/${docId}`);
+    return { success: false, error: errInfo.error };
+  }
+};
+
+/**
+ * Save array of documents using concurrent chunks for maximum speed & reliability
+ */
+export const saveCollectionBatch = async (
+  collectionName: string,
+  items: any[],
+  onItemProgress?: (uploadedCount: number) => void
+): Promise<{ successCount: number; failCount: number }> => {
+  if (!items || items.length === 0) return { successCount: 0, failCount: 0 };
+
+  let successCount = 0;
+  let failCount = 0;
+  const chunkSize = 10;
+
+  for (let i = 0; i < items.length; i += chunkSize) {
+    const chunk = items.slice(i, i + chunkSize);
+    await Promise.all(
+      chunk.map(async (item) => {
+        const docId = item.id || `doc-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+        try {
+          const res = await saveDocument(collectionName, docId, item);
+          if (res.success) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+        } catch (e) {
+          failCount++;
+        }
+        if (onItemProgress) {
+          onItemProgress(successCount);
+        }
+      })
+    );
+  }
+
+  return { successCount, failCount };
+};
+
+export interface SyncAllDataPayload {
+  properties?: any[];
+  vehicles?: any[];
+  hotels?: any[];
+  restaurants?: any[];
+  libraries?: any[];
+  roommates?: any[];
+  landlords?: any[];
+  users?: any[];
+  bookings?: any[];
+  generalItems?: any[];
+  clothing?: any[];
+  sportsTurfs?: any[];
+  wishlist?: any[];
+  notifications?: any[];
+  juniorAdmins?: any[];
+  reports?: any[];
+  systemConfig?: any;
+}
+
+export interface SyncStatsResult {
+  totalUploaded: number;
+  totalFailed: number;
+  collections: Record<string, number>;
+  databaseId: string;
+  timestamp: string;
+  success: boolean;
+}
+
+/**
+ * Master Sync: Uploads all collections to Firebase Firestore in high-speed parallel batches
+ */
+export const uploadAllDataToFirestore = async (
+  payload: SyncAllDataPayload,
+  onProgress?: (progressPercent: number, currentCollection: string) => void
+): Promise<SyncStatsResult> => {
+  const collectionsToUpload: { name: string; items: any[] }[] = [
+    { name: 'properties', items: payload.properties || INITIAL_PROPERTIES },
+    { name: 'vehicles', items: payload.vehicles || INITIAL_VEHICLES },
+    { name: 'hotels', items: payload.hotels || INITIAL_HOTELS },
+    { name: 'restaurants', items: payload.restaurants || INITIAL_RESTAURANTS },
+    { name: 'libraries', items: payload.libraries || INITIAL_LIBRARIES },
+    { name: 'roommates', items: payload.roommates || INITIAL_ROOMMATES },
+    { name: 'landlords', items: payload.landlords || INITIAL_LANDLORDS },
+    { name: 'general_items', items: payload.generalItems || INITIAL_GENERAL_ITEMS },
+    { name: 'clothing', items: payload.clothing || MOCK_CLOTHING_ITEMS },
+    { name: 'sports_turfs', items: payload.sportsTurfs || MOCK_SPORTS_TURFS },
+    { name: 'bookings', items: payload.bookings || [] },
+    { name: 'saved_items', items: payload.wishlist || [] },
+    { name: 'notifications', items: payload.notifications || [] },
+    { name: 'users', items: payload.users || [] },
+    { name: 'junior_admins', items: payload.juniorAdmins || [] },
+    { name: 'reports', items: payload.reports || [] }
+  ];
+
+  let totalItemsCount = collectionsToUpload.reduce((acc, curr) => acc + curr.items.length, 0);
+  if (payload.systemConfig) totalItemsCount += 1;
+
+  let uploadedSoFar = 0;
+  let totalUploaded = 0;
+  let totalFailed = 0;
+  const collectionStats: Record<string, number> = {};
+
+  for (let idx = 0; idx < collectionsToUpload.length; idx++) {
+    const col = collectionsToUpload[idx];
+    if (col.items.length > 0) {
+      if (onProgress) {
+        const percent = totalItemsCount > 0 ? Math.round((uploadedSoFar / totalItemsCount) * 100) : 0;
+        onProgress(percent, col.name);
+      }
+
+      const result = await saveCollectionBatch(col.name, col.items, () => {
+        uploadedSoFar++;
+        if (onProgress && totalItemsCount > 0) {
+          const percent = Math.min(99, Math.round((uploadedSoFar / totalItemsCount) * 100));
+          onProgress(percent, col.name);
+        }
+      });
+
+      totalUploaded += result.successCount;
+      totalFailed += result.failCount;
+      collectionStats[col.name] = result.successCount;
+    }
+  }
+
+  // Upload system config if available
+  if (payload.systemConfig) {
+    try {
+      await saveDocument('system_config', 'admin_credentials', payload.systemConfig);
+      totalUploaded += 1;
+      collectionStats['system_config'] = 1;
+    } catch (e) {
+      totalFailed += 1;
+    }
+  }
+
+  if (onProgress) {
+    onProgress(100, 'Complete');
+  }
+
+  return {
+    totalUploaded,
+    totalFailed,
+    collections: collectionStats,
+    databaseId: firebaseConfig.firestoreDatabaseId || 'default',
+    timestamp: new Date().toLocaleString('en-IN'),
+    success: totalUploaded > 0
+  };
+};
+
+/**
+ * Fully Automatic Database Seeding and Cloud Auto-Sync
+ * Ensures all 15+ collections are saved to Firebase Firestore automatically without manual intervention.
+ */
+export const autoUploadAllCollectionsSilently = async (payload?: Partial<SyncAllDataPayload>) => {
+  try {
+    const storedAdminId = typeof window !== 'undefined' ? localStorage.getItem('renthub_admin_id') : null;
+    const storedAdminPass = typeof window !== 'undefined' ? localStorage.getItem('renthub_admin_pass') : null;
+    const storedUsers = typeof window !== 'undefined' ? localStorage.getItem('renthub_users_list') : null;
+    const storedLandlords = typeof window !== 'undefined' ? localStorage.getItem('renthub_landlords_list') : null;
+    const storedJuniorAdmins = typeof window !== 'undefined' ? localStorage.getItem('renthub_junior_admins') : null;
+
+    const fullPayload: SyncAllDataPayload = {
+      properties: payload?.properties || INITIAL_PROPERTIES,
+      vehicles: payload?.vehicles || INITIAL_VEHICLES,
+      hotels: payload?.hotels || INITIAL_HOTELS,
+      restaurants: payload?.restaurants || INITIAL_RESTAURANTS,
+      libraries: payload?.libraries || INITIAL_LIBRARIES,
+      roommates: payload?.roommates || INITIAL_ROOMMATES,
+      landlords: payload?.landlords || (storedLandlords ? JSON.parse(storedLandlords) : INITIAL_LANDLORDS),
+      generalItems: payload?.generalItems || INITIAL_GENERAL_ITEMS,
+      clothing: payload?.clothing || MOCK_CLOTHING_ITEMS,
+      sportsTurfs: payload?.sportsTurfs || MOCK_SPORTS_TURFS,
+      bookings: payload?.bookings || [],
+      wishlist: payload?.wishlist || [],
+      notifications: payload?.notifications || [],
+      users: payload?.users || (storedUsers ? JSON.parse(storedUsers) : []),
+      juniorAdmins: payload?.juniorAdmins || (storedJuniorAdmins ? JSON.parse(storedJuniorAdmins) : []),
+      systemConfig: payload?.systemConfig || {
+        id: 'admin_credentials',
+        adminId: storedAdminId || 'admin@1234',
+        adminPass: storedAdminPass || 'Admin12345',
+        updatedAt: new Date().toISOString()
+      }
+    };
+
+    const result = await uploadAllDataToFirestore(fullPayload);
+    console.log('✅ Automatic Firebase Background Sync Completed:', result);
+    return result;
+  } catch (err) {
+    console.warn('Background auto-sync note:', err);
+    return null;
   }
 };
 
@@ -211,96 +461,12 @@ export const deleteDocument = async (collectionName: string, docId: string) => {
  */
 export const seedDatabaseIfEmpty = async () => {
   try {
-    // Check properties
-    const propsSnap = await getDocs(collection(db, 'properties'));
-    if (propsSnap.empty) {
-      console.log('Seeding properties collection to Firebase...');
-      for (const item of INITIAL_PROPERTIES) {
-        await saveDocument('properties', item.id, item);
-      }
-    }
-
-    // Check hotels
-    const hotelsSnap = await getDocs(collection(db, 'hotels'));
-    if (hotelsSnap.empty) {
-      console.log('Seeding hotels collection to Firebase...');
-      for (const item of INITIAL_HOTELS) {
-        await saveDocument('hotels', item.id, item);
-      }
-    }
-
-    // Check restaurants
-    const restSnap = await getDocs(collection(db, 'restaurants'));
-    if (restSnap.empty) {
-      console.log('Seeding restaurants collection to Firebase...');
-      for (const item of INITIAL_RESTAURANTS) {
-        await saveDocument('restaurants', item.id, item);
-      }
-    }
-
-    // Check libraries
-    const libSnap = await getDocs(collection(db, 'libraries'));
-    if (libSnap.empty) {
-      console.log('Seeding libraries collection to Firebase...');
-      for (const item of INITIAL_LIBRARIES) {
-        await saveDocument('libraries', item.id, item);
-      }
-    }
-
-    // Check vehicles
-    const vehSnap = await getDocs(collection(db, 'vehicles'));
-    if (vehSnap.empty) {
-      console.log('Seeding vehicles collection to Firebase...');
-      for (const item of INITIAL_VEHICLES) {
-        await saveDocument('vehicles', item.id, item);
-      }
-    }
-
-    // Check roommates
-    const rmSnap = await getDocs(collection(db, 'roommates'));
-    if (rmSnap.empty) {
-      console.log('Seeding roommates collection to Firebase...');
-      for (const item of INITIAL_ROOMMATES) {
-        await saveDocument('roommates', item.id, item);
-      }
-    }
-
-    // Check landlords
-    const llSnap = await getDocs(collection(db, 'landlords'));
-    if (llSnap.empty) {
-      console.log('Seeding landlords collection to Firebase...');
-      for (const item of INITIAL_LANDLORDS) {
-        await saveDocument('landlords', item.id, item);
-      }
-    }
-
-    // Check general items
-    const genSnap = await getDocs(collection(db, 'general_items'));
-    if (genSnap.empty) {
-      console.log('Seeding general items collection to Firebase...');
-      for (const item of INITIAL_GENERAL_ITEMS) {
-        await saveDocument('general_items', item.id, item);
-      }
-    }
-
-    // Check clothing
-    const clothSnap = await getDocs(collection(db, 'clothing'));
-    if (clothSnap.empty) {
-      console.log('Seeding clothing collection to Firebase...');
-      for (const item of MOCK_CLOTHING_ITEMS) {
-        await saveDocument('clothing', item.id, item);
-      }
-    }
-
-    // Check sports turfs
-    const turfSnap = await getDocs(collection(db, 'sports_turfs'));
-    if (turfSnap.empty) {
-      console.log('Seeding sports turfs collection to Firebase...');
-      for (const item of MOCK_SPORTS_TURFS) {
-        await saveDocument('sports_turfs', item.id, item);
-      }
+    const credRef = doc(db, 'system_config', 'admin_credentials');
+    const snap = await getDoc(credRef);
+    if (!snap.exists()) {
+      await autoUploadAllCollectionsSilently();
     }
   } catch (err) {
-    console.error('Error during Firebase seeding:', err);
+    console.warn('Error during Firebase seeding check:', err);
   }
 };

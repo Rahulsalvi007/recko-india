@@ -61,26 +61,26 @@ export const HotelDetailModal: React.FC<HotelDetailModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#FAF7F2] dark:bg-zinc-950 text-slate-900 dark:text-white overflow-y-auto w-full h-full min-h-screen">
+    <div className="fixed inset-0 z-50 bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-white overflow-y-auto w-full h-full min-h-screen">
       <div className="w-full min-h-screen flex flex-col">
         
         {/* Header Bar */}
-        <div className="bg-[#0C1017] text-[#FAF7F2] p-5 sm:p-6 flex justify-between items-center border-b border-slate-800 sticky top-0 z-40 shadow-md">
+        <div className="bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md text-slate-900 dark:text-white p-5 sm:p-6 flex justify-between items-center border-b border-slate-200 dark:border-zinc-800 sticky top-0 z-40 shadow-xs">
           <div className="flex items-center space-x-3">
             <button
               onClick={onClose}
-              className="flex items-center space-x-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer border border-slate-700"
+              className="flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-slate-800 dark:text-zinc-200 px-4 py-2 rounded-xl text-xs font-black transition-all cursor-pointer border border-slate-200 dark:border-zinc-700"
             >
               <X className="h-4 w-4" />
               <span>← Back to Hotels</span>
             </button>
             <div>
-              <h2 className="text-xl sm:text-2xl font-black">{hotel.title}</h2>
-              <div className="flex items-center space-x-2 text-slate-300 text-xs font-semibold mt-0.5">
-                <MapPin className="h-3.5 w-3.5 text-amber-300 shrink-0" />
+              <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white">{hotel.title}</h2>
+              <div className="flex items-center space-x-2 text-slate-500 dark:text-zinc-400 text-xs font-semibold mt-0.5">
+                <MapPin className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
                 <span>{hotel.location}, {hotel.city}</span>
                 <span>•</span>
-                <div className="flex items-center space-x-1 text-amber-400 font-bold">
+                <div className="flex items-center space-x-1 text-amber-500 dark:text-amber-400 font-bold">
                   <Star className="h-3.5 w-3.5 fill-current" />
                   <span>{hotel.rating} ({hotel.reviewsCount} reviews)</span>
                 </div>
@@ -90,11 +90,11 @@ export const HotelDetailModal: React.FC<HotelDetailModalProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="p-5 sm:p-8 space-y-6 max-h-[75vh] overflow-y-auto text-slate-900">
+        <div className="p-5 sm:p-8 space-y-6 max-h-[75vh] overflow-y-auto text-slate-900 dark:text-white">
           
           {/* Images Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-2 h-64 rounded-2xl overflow-hidden bg-slate-900">
+            <div className="sm:col-span-2 h-64 rounded-2xl overflow-hidden bg-slate-100 dark:bg-zinc-900">
               <img
                 src={hotel.images[0]}
                 alt={hotel.title}
@@ -103,7 +103,7 @@ export const HotelDetailModal: React.FC<HotelDetailModalProps> = ({
             </div>
             <div className="hidden sm:flex flex-col gap-3 h-64">
               {hotel.images.slice(1, 3).map((img, idx) => (
-                <div key={idx} className="h-30 rounded-2xl overflow-hidden bg-slate-900">
+                <div key={idx} className="h-30 rounded-2xl overflow-hidden bg-slate-100 dark:bg-zinc-900">
                   <img src={img} alt="Hotel preview" className="w-full h-full object-cover" />
                 </div>
               ))}
@@ -111,53 +111,47 @@ export const HotelDetailModal: React.FC<HotelDetailModalProps> = ({
           </div>
 
           {/* Description & Distance Quick Button */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 rounded-2xl border border-[#E5E0D8]">
-            <p className="text-xs sm:text-sm text-slate-700 font-medium leading-relaxed max-w-2xl">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-zinc-900 p-4 rounded-2xl border border-slate-200 dark:border-zinc-800 shadow-xs">
+            <p className="text-xs sm:text-sm text-slate-700 dark:text-zinc-300 font-medium leading-relaxed max-w-2xl">
               {hotel.description}
             </p>
 
             <button
               onClick={() => onOpenMap(hotel)}
-              className="bg-[#151B26] hover:bg-black text-[#FAF7F2] font-black text-xs px-4 py-2.5 rounded-xl transition-all shrink-0 flex items-center space-x-1.5 shadow-sm"
+              className="bg-slate-950 hover:bg-slate-900 dark:bg-blue-600 dark:hover:bg-blue-500 text-white font-black text-xs px-4 py-2.5 rounded-xl transition-all shrink-0 flex items-center space-x-1.5 shadow-sm"
             >
-              <Navigation className="h-4 w-4 text-amber-300" />
-              <span>Map & Distance</span>
+              <Navigation className="h-4 w-4" />
+              <span>Location Map</span>
             </button>
           </div>
 
-          {/* Select Room Type */}
+          {/* Room Categories */}
           <div>
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider mb-3 flex items-center space-x-2">
-              <Coffee className="h-4 w-4 text-slate-800" />
-              <span>Select Room Type</span>
-            </h3>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider mb-3">Available Room Options</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {hotel.rooms.map((room) => {
-                const isSelected = room.id === selectedRoomId;
+                const isSelected = selectedRoomId === room.id;
                 return (
                   <div
                     key={room.id}
                     onClick={() => setSelectedRoomId(room.id)}
-                    className={`p-4 rounded-2xl border-2 transition-all cursor-pointer ${
+                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
                       isSelected
-                        ? 'border-slate-950 bg-white shadow-md'
-                        : 'border-[#E5E0D8] bg-[#F7F4EE] hover:bg-white'
+                        ? 'border-blue-600 dark:border-blue-500 bg-blue-50 dark:bg-blue-950/40 shadow-md ring-2 ring-blue-600/30'
+                        : 'border-slate-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:border-slate-300 dark:hover:border-zinc-700'
                     }`}
                   >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-extrabold text-sm text-slate-950">{room.roomType}</h4>
-                        <p className="text-xs text-slate-500 font-medium">{room.beds} • Max {room.capacity} Guests</p>
+                    <div>
+                      <div className="flex justify-between items-start mb-2">
+                        <h4 className="font-extrabold text-sm text-slate-900 dark:text-white">{room.roomType}</h4>
+                        <span className="text-xs font-black text-blue-600 dark:text-blue-400">₹{room.pricePerNight.toLocaleString('en-IN')}<span className="text-[10px] text-slate-400 font-normal">/night</span></span>
                       </div>
-                      <span className="text-base font-black text-slate-950">
-                        ₹{room.pricePerNight.toLocaleString('en-IN')}<span className="text-xs text-slate-500">/night</span>
-                      </span>
+                      <p className="text-[11px] text-slate-500 dark:text-zinc-400 mb-3">{room.beds} • Max {room.capacity} Guests</p>
                     </div>
 
-                    <div className="flex flex-wrap gap-1 mt-2.5">
+                    <div className="flex flex-wrap gap-1">
                       {room.amenities.map((am, i) => (
-                        <span key={i} className="text-[10px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-md">
+                        <span key={i} className="text-[10px] font-bold bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 px-2 py-0.5 rounded-md">
                           {am}
                         </span>
                       ))}
@@ -169,8 +163,8 @@ export const HotelDetailModal: React.FC<HotelDetailModalProps> = ({
           </div>
 
           {/* Booking Config Bar */}
-          <div className="bg-[#151B26] text-[#FAF7F2] p-5 rounded-3xl border border-slate-800 space-y-4">
-            <h3 className="text-sm font-black text-amber-200 uppercase tracking-wider">
+          <div className="bg-slate-900 dark:bg-zinc-900 text-white p-5 rounded-3xl border border-slate-800 dark:border-zinc-800 space-y-4">
+            <h3 className="text-sm font-black text-blue-400 uppercase tracking-wider">
               Stay Details & Instant Reserve
             </h3>
 
@@ -181,7 +175,7 @@ export const HotelDetailModal: React.FC<HotelDetailModalProps> = ({
                   type="date"
                   value={checkInDate}
                   onChange={(e) => setCheckInDate(e.target.value)}
-                  className="w-full bg-[#222B3B] border border-slate-700 rounded-xl px-3 py-2 text-xs font-extrabold text-white outline-none focus:ring-2 focus:ring-amber-300"
+                  className="w-full bg-slate-800 dark:bg-zinc-800 border border-slate-700 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs font-extrabold text-white outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -191,7 +185,7 @@ export const HotelDetailModal: React.FC<HotelDetailModalProps> = ({
                   type="date"
                   value={checkOutDate}
                   onChange={(e) => setCheckOutDate(e.target.value)}
-                  className="w-full bg-[#222B3B] border border-slate-700 rounded-xl px-3 py-2 text-xs font-extrabold text-white outline-none focus:ring-2 focus:ring-amber-300"
+                  className="w-full bg-slate-800 dark:bg-zinc-800 border border-slate-700 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs font-extrabold text-white outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
@@ -200,7 +194,7 @@ export const HotelDetailModal: React.FC<HotelDetailModalProps> = ({
                 <select
                   value={guestsCount}
                   onChange={(e) => setGuestsCount(Number(e.target.value))}
-                  className="w-full bg-[#222B3B] border border-slate-700 rounded-xl px-3 py-2 text-xs font-extrabold text-white outline-none focus:ring-2 focus:ring-amber-300"
+                  className="w-full bg-slate-800 dark:bg-zinc-800 border border-slate-700 dark:border-zinc-700 rounded-xl px-3 py-2 text-xs font-extrabold text-white outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value={1}>1 Guest</option>
                   <option value={2}>2 Guests</option>
@@ -215,7 +209,7 @@ export const HotelDetailModal: React.FC<HotelDetailModalProps> = ({
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center pt-3 border-t border-slate-800 gap-3">
               <div>
                 <span className="text-xs text-slate-400 font-bold">Total Estimated Cost ({nightsCount} nights):</span>
-                <p className="text-2xl font-black text-[#FAF7F2]">
+                <p className="text-2xl font-black text-white">
                   ₹{totalPrice.toLocaleString('en-IN')}
                   <span className="text-xs text-slate-400 font-medium ml-1.5">(Inclusive of Taxes)</span>
                 </p>
@@ -239,7 +233,7 @@ export const HotelDetailModal: React.FC<HotelDetailModalProps> = ({
                       });
                     }
                   }}
-                  className="bg-[#222B3B] hover:bg-[#2c374b] text-indigo-300 font-black text-xs px-4 py-3 rounded-2xl transition-all flex items-center space-x-1.5 cursor-pointer border border-slate-700"
+                  className="bg-slate-800 hover:bg-slate-700 text-blue-300 font-black text-xs px-4 py-3 rounded-2xl transition-all flex items-center space-x-1.5 cursor-pointer border border-slate-700"
                 >
                   <MessageSquare className="h-4 w-4" />
                   <span>Chat Hotel</span>
@@ -266,7 +260,7 @@ export const HotelDetailModal: React.FC<HotelDetailModalProps> = ({
 
                 <button
                   onClick={handleBook}
-                  className="flex-1 sm:flex-initial bg-[#FAF7F2] hover:bg-white text-slate-950 font-black text-xs sm:text-sm px-6 py-3 rounded-2xl transition-all shadow-lg cursor-pointer"
+                  className="flex-1 sm:flex-initial bg-blue-600 hover:bg-blue-500 text-white font-black text-xs sm:text-sm px-6 py-3 rounded-2xl transition-all shadow-lg cursor-pointer border border-blue-400"
                 >
                   Confirm Room Booking
                 </button>
@@ -276,7 +270,7 @@ export const HotelDetailModal: React.FC<HotelDetailModalProps> = ({
 
           {/* Hotel Amenities List */}
           <div>
-            <h3 className="text-sm font-black text-slate-900 uppercase tracking-wider mb-2">Hotel Amenities</h3>
+            <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-wider mb-2">Hotel Amenities</h3>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {hotel.amenities.map((item, idx) => (
                 <div key={idx} className="flex items-center space-x-2 text-xs font-extrabold text-slate-800 bg-white p-2.5 rounded-xl border border-[#E5E0D8]">

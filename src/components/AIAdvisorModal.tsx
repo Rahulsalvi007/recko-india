@@ -208,19 +208,19 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
     );
 
     // 6. Hotels
-    (availableHotels || []).forEach((h) =>
+    (availableHotels || []).forEach((h: any) =>
       list.push({
         id: h.id,
         rawObj: h,
-        title: h.name,
+        title: h.title || h.name || 'Hotel Stay',
         type: 'hotel',
-        categoryDisplay: `Hotel (${h.starRating}★)`,
+        categoryDisplay: `Hotel (${h.starRating || 4}★)`,
         city: h.city || '',
         location: h.location || '',
         fullLocation: `${h.location || ''}, ${h.city || ''}`,
-        price: h.pricePerNight,
+        price: h.pricePerNight || 2000,
         priceUnit: '/night',
-        rentPerMonth: (h.pricePerNight || 0) * 30,
+        rentPerMonth: (h.pricePerNight || 2000) * 30,
         amenities: h.amenities || [],
         image: h.images && h.images[0] ? h.images[0] : 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=600&q=80',
         badgeColor: 'bg-amber-100 text-amber-900 border-amber-300'
@@ -228,39 +228,39 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
     );
 
     // 7. Restaurants
-    (availableRestaurants || []).forEach((r) =>
+    (availableRestaurants || []).forEach((r: any) =>
       list.push({
         id: r.id,
         rawObj: r,
-        title: r.name,
+        title: r.title || r.name || 'Restaurant',
         type: 'restaurant',
-        categoryDisplay: `Restaurant (${r.cuisine})`,
+        categoryDisplay: `Restaurant (${r.cuisine || 'Fine Dining'})`,
         city: r.city || '',
         location: r.location || '',
         fullLocation: `${r.location || ''}, ${r.city || ''}`,
-        price: r.avgCostForTwo,
+        price: r.averageCostForTwo || r.avgCostForTwo || 800,
         priceUnit: ' for two',
-        rentPerMonth: r.avgCostForTwo,
-        amenities: [r.cuisine, r.ambiance],
+        rentPerMonth: r.averageCostForTwo || r.avgCostForTwo || 800,
+        amenities: [r.cuisine || 'Dining', r.ambiance || 'AC'],
         image: r.images && r.images[0] ? r.images[0] : 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=600&q=80',
         badgeColor: 'bg-amber-100 text-amber-900 border-amber-300'
       })
     );
 
     // 8. Libraries
-    (availableLibraries || []).forEach((l) =>
+    (availableLibraries || []).forEach((l: any) =>
       list.push({
         id: l.id,
         rawObj: l,
-        title: l.name,
+        title: l.title || l.name || 'Library & Study Spot',
         type: 'library',
         categoryDisplay: `Library / Study Spot`,
         city: l.city || '',
         location: l.location || '',
         fullLocation: `${l.location || ''}, ${l.city || ''}`,
-        price: l.monthlyFee,
+        price: l.monthlyFee || 1000,
         priceUnit: '/month',
-        rentPerMonth: l.monthlyFee,
+        rentPerMonth: l.monthlyFee || 1000,
         amenities: l.amenities || [],
         image: l.images && l.images[0] ? l.images[0] : 'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?w=600&q=80',
         badgeColor: 'bg-amber-100 text-amber-900 border-amber-300'
@@ -281,6 +281,42 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
     setResult(null);
 
     const allListings = getAllListingsContext();
+    const userLoc = location.trim().toLowerCase();
+    const userReq = whatYouWant.trim().toLowerCase();
+
+    // Perform smart client-side matching engine
+    const generateLocalResult = () => {
+      const reqKeywords = userReq.split(/\s+/).filter(k => k.length > 2);
+      
+      const matched = allListings.filter((item) => {
+        const titleLower = (item.title || '').toLowerCase();
+        const typeLower = (item.type || '').toLowerCase();
+        const catLower = (item.categoryDisplay || '').toLowerCase();
+        const cityLower = (item.city || '').toLowerCase();
+        const locLower = (item.location || '').toLowerCase();
+
+        const titleMatch = reqKeywords.some(k => titleLower.includes(k) || typeLower.includes(k) || catLower.includes(k)) || titleLower.includes(userReq);
+        const cityMatch = !userLoc || cityLower.includes(userLoc) || locLower.includes(userLoc) || userReq.includes(cityLower);
+        const budgetMatch = !budget || (item.price || 0) <= budget * 1.5;
+        
+        return (titleMatch || cityMatch) && budgetMatch;
+      });
+
+      const matchedIds = matched.slice(0, 4).map((x) => x.id);
+      const displayLocation = location.trim() || 'your location';
+
+      return {
+        recommendedIds: matchedIds.length > 0 ? matchedIds : allListings.slice(0, 3).map((x) => x.id),
+        summary: `Found ${matchedIds.length || allListings.length} verified listings in ${displayLocation} matching your query "${whatYouWant}". All assets are 100% verified with zero brokerage direct host contacts.`,
+        keyFactors: [
+          `Verified direct host contact in ${displayLocation}`,
+          `Transparent 100% Bank Escrow security deposit protection`,
+          `Instant online booking slot reservation`
+        ],
+        budgetTips: `Book directly through Recko Escrow to save 100% brokerage fees and secure an instant refundable token slot.`,
+        verdict: '✅ Verified Matches Found'
+      };
+    };
 
     try {
       const resp = await fetch('/api/gemini/recommend', {
@@ -301,40 +337,21 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
             amenities: item.amenities
           }))
         })
-      });
+      }).catch(() => null);
 
-      if (!resp.ok) {
-        throw new Error(`Server returned HTTP ${resp.status}`);
+      if (resp && resp.ok) {
+        const contentType = resp.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = await resp.json();
+          setResult(data);
+          return;
+        }
       }
 
-      const data = await resp.json();
-      setResult(data);
+      // Netlify / Static hosting fallback
+      setResult(generateLocalResult());
     } catch (err: any) {
-      console.warn('Backend AI recommend API unavailable, generating local fallback match:', err);
-
-      const userLoc = location.trim().toLowerCase();
-      const userReq = whatYouWant.trim().toLowerCase();
-
-      const matched = allListings.filter((item) => {
-        const titleMatch = item.title.toLowerCase().includes(userReq) || userReq.includes(item.type);
-        const cityMatch = !userLoc || item.city.toLowerCase().includes(userLoc) || item.location.toLowerCase().includes(userLoc);
-        const budgetMatch = !budget || item.price <= budget * 1.5;
-        return (titleMatch || cityMatch) && budgetMatch;
-      });
-
-      const matchedIds = matched.slice(0, 4).map((x) => x.id);
-
-      setResult({
-        recommendedIds: matchedIds.length > 0 ? matchedIds : allListings.slice(0, 3).map((x) => x.id),
-        summary: `Found ${matchedIds.length || allListings.length} verified listings in ${location || 'India'} matching your query "${whatYouWant}" under ₹${budget.toLocaleString('en-IN')}. All assets are 100% verified with zero brokerage direct host contacts.`,
-        keyFactors: [
-          `Verified direct host contact in ${location || 'selected city'}`,
-          `Transparent refundable security deposit terms`,
-          `Instant online slot reservation with escrow protection`
-        ],
-        budgetTips: `Book directly through Recko Escrow to save 100% brokerage fees and secure an instant refundable token slot.`,
-        verdict: '✅ Verified Matches Found'
-      });
+      setResult(generateLocalResult());
     } finally {
       setLoading(false);
     }
@@ -342,20 +359,32 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
 
   const getClientConciergeReply = (query: string): string => {
     const q = query.toLowerCase();
-    if (q.includes('deposit') || q.includes('security')) {
-      return `🔒 **Security Deposit Policy:**\n\n• Security deposits are held in **100% Bank Escrow**.\n• Refunds are processed within 24 hours after host check-out inspection.\n• You can dispute any deductions directly with Recko Admin support!`;
+    if (q.includes('deposit') || q.includes('security') || q.includes('refund')) {
+      return `🔒 **Security Deposit Policy:**\n\n• Security deposits are held in **100% Bank Escrow**.\n• Refunds are processed within 24 hours after host check-out inspection.\n• Under Model Tenancy Act, residential deposits are capped at max 2 months rent.\n• You can dispute any deductions directly with Recko Admin support!`;
     }
-    if (q.includes('brokerage') || q.includes('owner') || q.includes('direct')) {
+    if (q.includes('broker') || q.includes('brokerage') || q.includes('zero') || q.includes('direct') || q.includes('commission')) {
       return `🏠 **Zero Brokerage Guarantee:**\n\n• Recko-India connects tenants directly with verified owners.\n• No broker commission is charged for any listing.\n• You get direct owner WhatsApp / phone contact after paying a 100% refundable ₹99 token!`;
     }
-    if (q.includes('car') || q.includes('bike') || q.includes('vehicle')) {
-      return `🚗 **Self-Drive Vehicle Rental Policy:**\n\n• **Required Documents:** Valid Indian Driving License & Aadhaar Card.\n• **Kilometer Limit:** 250 km/day included free (extra km @ ₹8/km).\n• Fuel & FASTag toll fees are borne by the hirer. All vehicles have speed-governors and GPS tracking for safety.`;
+    if (q.includes('flat') || q.includes('bhk') || q.includes('pg') || q.includes('hostel') || q.includes('house') || q.includes('villa') || q.includes('room')) {
+      return `🏡 **Properties & Student PGs:**\n\n• Explore verified 1-4 BHK flats, luxury villas, and student PGs with mess facilities.\n• Filter listings by city, maximum monthly budget, or college proximity.\n• All homes come with verified owner contacts and zero brokerage!`;
     }
-    if (q.includes('dress') || q.includes('lehenga') || q.includes('sherwani') || q.includes('cloth')) {
-      return `👗 **Designer Outfit Rental Policy:**\n\n• **Dry Cleaning:** All garments are professionally dry-cleaned & steam sanitized before dispatch.\n• **Alteration & Fitting:** Custom doorstep fitting & alterations are available on request.\n• standard rental duration is 3 days (expandable to 7 days).`;
+    if (q.includes('roommate') || q.includes('flatmate') || q.includes('sharing')) {
+      return `👥 **Nearby Roommate Finder:**\n\n• Switch to the "Student PG & Roommate" tab on the main page to connect live with nearby roommates.\n• Filter profiles by distance (< 1km, < 5km), gender preference, and dietary habits (Veg / Non-Veg).`;
     }
-    if (q.includes('turf') || q.includes('cricket') || q.includes('football') || q.includes('badminton')) {
+    if (q.includes('car') || q.includes('bike') || q.includes('scooty') || q.includes('vehicle') || q.includes('thar') || q.includes('creta') || q.includes('activa')) {
+      return `🚗 **Self-Drive Vehicle Rental Policy:**\n\n• **Required Documents:** Valid Indian Driving License & Aadhaar Card.\n• **Kilometer Limit:** 250 km/day included free (extra km @ ₹8/km).\n• Fuel & FASTag toll fees are borne by the hirer. All vehicles have speed-governors and live GPS tracking for safety.`;
+    }
+    if (q.includes('dress') || q.includes('lehenga') || q.includes('sherwani') || q.includes('cloth') || q.includes('suit') || q.includes('gown') || q.includes('wedding')) {
+      return `👗 **Designer Outfit Rental Policy:**\n\n• **Dry Cleaning:** All garments are professionally dry-cleaned & steam sanitized before dispatch.\n• **Alteration & Fitting:** Custom doorstep fitting & minor alterations are available on request.\n• Standard rental duration is 3 days (expandable up to 7 days).`;
+    }
+    if (q.includes('turf') || q.includes('cricket') || q.includes('football') || q.includes('badminton') || q.includes('ground')) {
       return `🏏 **Sports Turf & Court Booking:**\n\n• **Slot Timing:** 24/7 LED Floodlight hourly slots available.\n• **Complimentary Equipment:** Bats, balls, bibs, and stumps are provided free at the venue.\n• Select the "Sports Turfs" filter in the top navigation to reserve your instant time slot!`;
+    }
+    if (q.includes('hotel') || q.includes('stay') || q.includes('resort') || q.includes('suite')) {
+      return `🏨 **Hotels & Resort Reservations:**\n\n• Instant daily room reservations with FSSAI & licensed hotel partners.\n• Select the "Hotels" tab on the homepage to explore room amenities, ratings, and instant check-in slots.`;
+    }
+    if (q.includes('library') || q.includes('study') || q.includes('pass') || q.includes('cabin')) {
+      return `📚 **Digital Libraries & AC Study Pods:**\n\n• 24/7 access to silent, soundproof study cabins with high-speed Wi-Fi & ergonomic seating.\n• Select the "Libraries" category to get a daily or monthly study pass.`;
     }
     return `Hello! Welcome to Recko-India 24/7 AI Concierge.\n\nYou can ask about any rental category or policy:\n• 🏠 **Flats, Villas & Student PGs** (Zero Brokerage, Deposit Rules)\n• 🚗 **Self-Drive Cars & Bikes** (Creta, Thar, Activa, KYC & FASTag)\n• 👗 **Wedding Sherwanis & Bridal Lehengas** (Sanitization & Fitting)\n• 🏏 **Sports Turfs & Box Cricket Slots**\n• 📄 **11-Month Rental Agreements & Legal Guidelines**`;
   };
@@ -385,18 +414,29 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
           message: queryToSend,
           history: newHistory.slice(-6).map((m) => ({ role: m.role, content: m.text }))
         })
-      });
+      }).catch(() => null);
 
-      if (!resp.ok) {
-        throw new Error(`HTTP ${resp.status}`);
+      if (resp && resp.ok) {
+        const contentType = resp.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          const data = await resp.json();
+          setChatMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant',
+              text: data.reply || getClientConciergeReply(queryToSend),
+              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            }
+          ]);
+          return;
+        }
       }
 
-      const data = await resp.json();
       setChatMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          text: data.reply || getClientConciergeReply(queryToSend),
+          text: getClientConciergeReply(queryToSend),
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
       ]);
@@ -477,10 +517,10 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
       {/* Luxury White Background, Black Text & Golden Accents Container */}
-      <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-amber-400/40 overflow-hidden my-4 text-slate-900 animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[92vh]">
+      <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-blue-500/40 overflow-hidden my-4 text-slate-900 animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[92vh]">
         
-        {/* Dark Slate & Gold Top Header */}
-        <div className="bg-slate-900 p-4 sm:p-5 text-white relative shrink-0 border-b border-amber-400/30">
+        {/* Dark Slate & Blue Top Header */}
+        <div className="bg-slate-900 p-4 sm:p-5 text-white relative shrink-0 border-b border-blue-500/30">
           <button
             onClick={onClose}
             className="absolute top-4 right-4 p-2 text-slate-300 hover:text-white rounded-full bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-colors cursor-pointer"
@@ -490,7 +530,7 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
           </button>
 
           <div className="flex items-center space-x-3 mb-3">
-            <div className="p-2.5 bg-gradient-to-tr from-amber-500 via-amber-400 to-yellow-400 text-slate-950 rounded-2xl shadow-md font-black ring-4 ring-amber-400/20">
+            <div className="p-2.5 bg-gradient-to-tr from-blue-600 via-indigo-600 to-blue-500 text-white rounded-2xl shadow-md font-black ring-4 ring-blue-500/20">
               <Sparkles className="h-5 w-5 stroke-[2.5]" />
             </div>
             <div>
@@ -498,7 +538,7 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
                 <h2 className="text-lg sm:text-xl font-bold tracking-tight text-white">
                   Recko-India AI Assistant
                 </h2>
-                <span className="bg-amber-400/10 text-amber-300 border border-amber-400/30 font-bold text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                <span className="bg-blue-500/20 text-blue-300 border border-blue-500/40 font-bold text-[10px] px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                   Smart Match & 24/7 Chat
                 </span>
               </div>
@@ -508,13 +548,13 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
             </div>
           </div>
 
-          {/* Mode Switcher Tabs (Black & Gold) */}
+          {/* Mode Switcher Tabs (Black & Blue) */}
           <div className="flex items-center space-x-2 bg-slate-800 p-1 rounded-2xl border border-slate-700">
             <button
               onClick={() => setActiveTab('advisor')}
               className={`flex-1 flex items-center justify-center space-x-2 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'advisor'
-                  ? 'bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 text-slate-950 font-black shadow-md shadow-amber-500/20'
+                  ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 text-white font-black shadow-md shadow-blue-500/20'
                   : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
               }`}
             >
@@ -526,7 +566,7 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
               onClick={() => setActiveTab('concierge')}
               className={`flex-1 flex items-center justify-center space-x-2 py-2 px-3 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                 activeTab === 'concierge'
-                  ? 'bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 text-slate-950 font-black shadow-md shadow-amber-500/20'
+                  ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 text-white font-black shadow-md shadow-blue-500/20'
                   : 'text-slate-300 hover:text-white hover:bg-slate-700/50'
               }`}
             >
@@ -666,7 +706,7 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black py-3.5 px-4 rounded-2xl flex items-center justify-center space-x-2 shadow-lg shadow-amber-500/20 transition-all cursor-pointer disabled:opacity-50 hover:scale-[1.005] text-xs border border-amber-300"
+                className="w-full bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-indigo-500 text-white font-black py-3.5 px-4 rounded-2xl flex items-center justify-center space-x-2 shadow-lg shadow-blue-500/20 transition-all cursor-pointer disabled:opacity-50 hover:scale-[1.005] text-xs border border-blue-400"
               >
                 {loading ? (
                   <>
@@ -787,7 +827,7 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
 
                             <div className="flex items-center space-x-2 mt-1">
                               <span className="text-xs font-black text-amber-700">
-                                ₹{item.price.toLocaleString('en-IN')}
+                                ₹{(item.price || 0).toLocaleString('en-IN')}
                               </span>
                               <span className="text-[10px] text-slate-500 font-medium">
                                 {item.priceUnit}
