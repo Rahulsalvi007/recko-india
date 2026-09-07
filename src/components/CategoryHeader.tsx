@@ -61,6 +61,7 @@ export const CategoryHeader: React.FC<CategoryHeaderProps> = ({
 }) => {
   const [heroTab, setHeroTab] = useState<'properties' | 'vehicles'>(activeCategory === 'vehicle' ? 'vehicles' : 'properties');
   const [isListening, setIsListening] = useState(false);
+  const [_budgetLabel, setBudgetLabel] = useState('All Budgets');
 
   const handleStartVoiceSearch = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;

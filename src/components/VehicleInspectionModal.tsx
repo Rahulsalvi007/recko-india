@@ -42,6 +42,7 @@ export const VehicleInspectionModal: React.FC<VehicleInspectionModalProps> = ({
   // State for Return Inspection
   const [odometerReturn, setOdometerReturn] = useState<number>(booking.returnOdometerKm || 25780);
   const [fuelReturn, setFuelReturn] = useState<number>(booking.returnFuelLevelPercent || 70);
+  const [lateHours, setLateHours] = useState<number>(0);
 
   // Calculations for Return
   const includedKm = booking.includedKm || 300;
@@ -49,8 +50,9 @@ export const VehicleInspectionModal: React.FC<VehicleInspectionModalProps> = ({
   const usedKm = Math.max(0, odometerReturn - odometerPickup);
   const extraKm = Math.max(0, usedKm - includedKm);
   const extraKmFee = extraKm * extraKmChargeRate;
+  const lateFeeTotal = Math.max(0, lateHours * 250);
   const initialDeposit = 2000;
-  const finalSettlementDeposit = Math.max(0, initialDeposit - extraKmFee);
+  const finalSettlementDeposit = Math.max(0, initialDeposit - extraKmFee - lateFeeTotal);
 
   const handleSave = () => {
     let newStatus = booking.status;

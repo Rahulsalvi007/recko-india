@@ -60,7 +60,8 @@ import {
   Restaurant,
   Library,
   WishlistItem,
-  AppNotification
+  AppNotification,
+  JuniorAdmin
 } from './types';
 import {
   INITIAL_PROPERTIES,
@@ -2734,11 +2735,11 @@ export default function App() {
       {/* 3. Mobile Glassmorphism Quick-Action Floating Navigation Dock */}
       <BottomNavDock
         onOpenAIModal={() => setIsAIModalOpen(true)}
-        onOpenRadar={() => setIsRadarOpen(true)}
-        onOpenWishlist={() => setIsWishlistOpen(true)}
+        onOpenRadar={() => setIsRadarModalOpen(true)}
+        onOpenWishlist={() => setIsSavedModalOpen(true)}
         onOpenListProperty={() => {
-          if (!loggedInLandlord) setIsLandlordAuthOpen(true);
-          else setIsListingModalOpen(true);
+          if (!loggedInLandlord) setIsLandlordAuthModalOpen(true);
+          else setIsLandlordModalOpen(true);
         }}
         wishlistCount={wishlist.length}
       />

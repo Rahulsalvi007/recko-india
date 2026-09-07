@@ -221,7 +221,7 @@ export const LandlordListingModal: React.FC<LandlordListingModalProps> = ({
 
     // Validate size (max 500 KB per photo)
     const validFiles: File[] = [];
-    selectedFiles.forEach((file) => {
+    selectedFiles.forEach((file: File) => {
       if (file.size > MAX_IMAGE_SIZE_BYTES) {
         const sizeInKB = (file.size / 1024).toFixed(1);
         alert(`⚠️ File "${file.name}" is ${sizeInKB} KB. Maximum allowed image size is 500 KB per photo.`);

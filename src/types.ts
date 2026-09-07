@@ -294,6 +294,7 @@ export interface Vehicle {
   currentLat?: number;
   currentLng?: number;
   speedKmh?: number;
+  fuelLevelPercent?: number;
   licensePlate: string;
   isAvailable?: boolean;
 
