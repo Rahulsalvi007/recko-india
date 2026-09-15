@@ -217,10 +217,10 @@ export const LandlordListingModal: React.FC<LandlordListingModalProps> = ({
 
     const selectedFiles = Array.from(files) as File[];
     const validFiles: File[] = [];
-
-    selectedFiles.forEach((file) => {
+    selectedFiles.forEach((file: File) => {
       if (file.size > 500 * 1024) {
-        alert(`⚠️ "${file.name}" is over 500 KB. Please select images under 500 KB.`);
+        const sizeInKB = (file.size / 1024).toFixed(1);
+        alert(`⚠️ File "${file.name}" is ${sizeInKB} KB. Maximum allowed image size is 500 KB per photo.`);
       } else {
         validFiles.push(file);
       }
