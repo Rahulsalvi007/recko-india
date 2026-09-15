@@ -325,7 +325,7 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
     };
 
     try {
-      const resp = await fetch(getApiUrl('/api/gemini/recommend'), {
+      const resp = await fetch(getApiUrl('/api/ai/recommend'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -391,9 +391,9 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-      const resp = await fetch(getApiUrl('/api/gemini/chat'), {
+      const resp = await fetch(getApiUrl('/api/ai/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,

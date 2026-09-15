@@ -888,7 +888,7 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
                                 if (window.confirm(`Delete vehicle "${asset.title}"?`)) onDeleteVehicle(asset.id);
                               } else if (asset.assetType === 'clothing' && onDeleteClothing) {
                                 if (window.confirm(`Delete outfit "${asset.title}"?`)) onDeleteClothing(asset.id);
-                              } else if (asset.assetType === 'sportsturf' && onDeleteSportsTurf) {
+                              } else if (asset.assetType === 'turf' && onDeleteSportsTurf) {
                                 if (window.confirm(`Delete sports turf "${asset.title}"?`)) onDeleteSportsTurf(asset.id);
                               } else if (asset.assetType === 'general' && onDeleteGeneralItem) {
                                 if (window.confirm(`Delete listing "${asset.title}"?`)) onDeleteGeneralItem(asset.id);

@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI, Type } from '@google/genai';
+import OpenAI from 'openai';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { sendBrevoEmailOtp, verifyBrevoEmailOtp, getBrevoStatus } from './server/brevoEmailService.js';
@@ -58,23 +58,23 @@ async function startServer() {
 
   app.use('/api/', rateLimiter);
 
-  // Initialize Gemini AI Client
-  const ai = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY || '',
-    httpOptions: {
-      headers: {
-        'User-Agent': 'aistudio-build',
-      },
-    },
-  });
+  // Initialize OpenAI AI Client
+  const openaiApiKey = process.env.OPENAI_API_KEY || '';
+  const openaiModel = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
 
   // Health check
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+    res.json({
+      status: 'ok',
+      aiProvider: openai ? 'openai' : 'local-resilient-engine',
+      model: openai ? openaiModel : 'offline-smart-rules',
+      timestamp: new Date().toISOString()
+    });
   });
 
-  // AI Recommendation Endpoint
-  app.post('/api/gemini/recommend', async (req, res) => {
+  // AI Recommendation Endpoint Handler (Supports /api/ai/recommend, /api/openai/recommend, /api/gemini/recommend)
+  const handleAiRecommend = async (req: express.Request, res: express.Response) => {
     try {
       const { whatYouWant, category, budget, location, availableListings = [] } = req.body;
       const userReq = whatYouWant || category || 'Rental Property';
@@ -137,22 +137,25 @@ async function startServer() {
         return (availableListings || []).slice(0, 3).map((item: any) => item.id);
       };
 
-      if (!process.env.GEMINI_API_KEY) {
-        // Smart Local Match Fallback when key is not configured
-        const matched = getLocalMatches();
-
-        return res.json({
-          verdict: '✅ Verified Rental Matches Found',
-          summary: `Top verified listings matching your requirement ("${userReq}" in "${location || 'Any City'}" with budget ₹${budget ? Number(budget).toLocaleString('en-IN') : 'flexible'}) have been retrieved!`,
-          recommendedIds: matched,
-          keyFactors: [
-            `Direct verified owner contact in ${location || 'selected area'} with zero brokerage.`,
-            'Confirm security deposit, item condition, and rental duration terms.',
-            'Instant booking support available directly via Recko-India.'
-          ],
-          budgetTips: 'Pro Tip: Show your verified student or professional ID for exclusive rental discounts and deposit waivers.'
-        });
-      }
+      const systemInstruction = `You are Recko-India's Senior AI Rental Advisor for Indian rentals & assets.
+Communicate clearly, helpfully and accurately. Match the user's language (fluent Hindi, Hinglish or English).
+Recko-India supports:
+- Vehicles (Self-drive cars, SUVs: Thar, Creta; Royal Enfield bikes, Activa scooties)
+- Clothing (Wedding Sherwanis, Bridal Lehengas, Tuxedos, Indo-Western gowns)
+- Appliances & Electronics (Smart TVs, Single/Double Door Refrigerators, Split ACs, Washing Machines)
+- Sports Turfs (Box cricket turfs, football grounds, badminton courts)
+- Residential Properties (1/2/3 BHK flats, student PGs with mess, villas, commercial spaces)
+- Hotels & Stays (Luxury suites, night tariffs, guest houses)
+- Restaurants & Dining (Table reservations, dining deals)
+- 24/7 Silent Study Libraries (Daily & monthly passes).
+Return your response ONLY as a JSON object matching this schema:
+{
+  "verdict": string,
+  "summary": string,
+  "recommendedIds": string[],
+  "keyFactors": string[],
+  "budgetTips": string
+}`;
 
       const prompt = `Analyze the user's rental requirements and current available listings:
 
@@ -167,74 +170,52 @@ ${JSON.stringify((availableListings || []).slice(0, 30))}
 Strict Rules:
 1. Geographical Accuracy: Strictly prioritize listings located in or nearest to the requested city "${location || 'Any'}".
 2. Category Fidelity: Match the specific asset type (Vehicles, Clothing, Sports Turf, Electronics, Flats, PGs, Hotels, etc.).
-3. Language: Always write responses in fluent, professional English.
-4. Output format: Return JSON matching the schema.`;
+3. Language: Always write responses in fluent, professional English or Hinglish matching user tone.
+4. Output format: Return JSON with keys: verdict, summary, recommendedIds (array of string IDs from listings), keyFactors (array of strings), budgetTips (string).`;
 
-      let response;
-      const systemInstruction = `You are Recko-India's Senior AI Rental Advisor for Indian rentals & assets.
-Communicate clearly, helpfully and accurately. Match the user's language (fluent Hindi, Hinglish or English).
-Recko-India supports:
-- Vehicles (Self-drive cars, SUVs: Thar, Creta; Royal Enfield bikes, Activa scooties)
-- Clothing (Wedding Sherwanis, Bridal Lehengas, Tuxedos, Indo-Western gowns)
-- Appliances & Electronics (Smart TVs, Single/Double Door Refrigerators, Split ACs, Washing Machines)
-- Sports Turfs (Box cricket turfs, football grounds, badminton courts)
-- Residential Properties (1/2/3 BHK flats, student PGs with mess, villas, commercial spaces)
-- Hotels & Stays (Luxury suites, night tariffs, guest houses)
-- Restaurants & Dining (Table reservations, dining deals)
-- 24/7 Silent Study Libraries (Daily & monthly passes).`;
+      if (openai) {
+        try {
+          const completion = await openai.chat.completions.create({
+            model: openaiModel,
+            messages: [
+              { role: 'system', content: systemInstruction },
+              { role: 'user', content: prompt }
+            ],
+            response_format: { type: 'json_object' },
+            temperature: 0.3,
+          });
 
-      try {
-        response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
-          contents: prompt,
-          config: {
-            systemInstruction,
-            responseMimeType: 'application/json',
-            responseSchema: {
-              type: Type.OBJECT,
-              properties: {
-                verdict: { type: Type.STRING },
-                summary: { type: Type.STRING },
-                recommendedIds: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING }
-                },
-                keyFactors: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING }
-                },
-                budgetTips: { type: Type.STRING }
-              },
-              required: ['verdict', 'summary', 'recommendedIds', 'keyFactors', 'budgetTips']
-            }
+          const text = completion.choices[0]?.message?.content || '{}';
+          const parsedData = JSON.parse(text);
+          if (parsedData && parsedData.verdict && Array.isArray(parsedData.recommendedIds)) {
+            return res.json(parsedData);
           }
-        });
-      } catch (geminiErr) {
-        const matched = getLocalMatches();
-        return res.json({
-          verdict: '✅ Verified Rental Matches Found',
-          summary: `Top verified listings matching your requirement ("${userReq}" in "${location || 'Any City'}" with budget ₹${budget ? Number(budget).toLocaleString('en-IN') : 'flexible'}) have been retrieved!`,
-          recommendedIds: matched,
-          keyFactors: [
-            `Direct verified owner contact in ${location || 'selected area'} with zero brokerage.`,
-            'Confirm security deposit, item condition, and rental duration terms.',
-            'Instant booking support available directly via Recko-India.'
-          ],
-          budgetTips: 'Pro Tip: Show your verified student or professional ID for exclusive rental discounts and deposit waivers.'
-        });
+        } catch (openaiErr: any) {
+          console.warn('[OpenAI Recommend notice - using resilient fallback]:', openaiErr?.message || openaiErr);
+        }
       }
 
-      const text = response?.text || '{}';
-      const parsedData = JSON.parse(text);
-      return res.json(parsedData);
+      // Resilient local match fallback
+      const matched = getLocalMatches();
+      return res.json({
+        verdict: '✅ Verified Rental Matches Found',
+        summary: `Top verified listings matching your requirement ("${userReq}" in "${location || 'Any City'}" with budget ₹${budget ? Number(budget).toLocaleString('en-IN') : 'flexible'}) have been retrieved!`,
+        recommendedIds: matched,
+        keyFactors: [
+          `Direct verified owner contact in ${location || 'selected area'} with zero brokerage.`,
+          'Confirm security deposit, item condition, and rental duration terms.',
+          'Instant booking support available directly via Recko-India.'
+        ],
+        budgetTips: 'Pro Tip: Show your verified student or professional ID for exclusive rental discounts and deposit waivers.'
+      });
     } catch (error: any) {
-      const userReq = req.body.whatYouWant || req.body.category || 'Rental Asset';
-      const availableListings = req.body.availableListings || [];
+      const userReq = req.body?.whatYouWant || req.body?.category || 'Rental Asset';
+      const availableListings = req.body?.availableListings || [];
       const matched = (availableListings || []).slice(0, 3).map((item: any) => item.id);
 
       return res.json({
         verdict: '👍 Matching Listings Found',
-        summary: `Explore verified options below matching your requirement "${userReq}" in ${req.body.location || 'your area'}.`,
+        summary: `Explore verified options below matching your requirement "${userReq}" in ${req.body?.location || 'your area'}.`,
         recommendedIds: matched,
         keyFactors: [
           'Direct owner contact available without brokerage.',
@@ -244,10 +225,15 @@ Recko-India supports:
         budgetTips: 'Pro Tip: Contact owner directly to negotiate the best daily or monthly rate.'
       });
     }
-  });
+  };
 
-  // AI Conversational Concierge Endpoint
-  app.post('/api/gemini/chat', async (req, res) => {
+  // Register AI Recommendation endpoints with aliases
+  app.post('/api/ai/recommend', handleAiRecommend);
+  app.post('/api/openai/recommend', handleAiRecommend);
+  app.post('/api/gemini/recommend', handleAiRecommend);
+
+  // AI Conversational Concierge Endpoint Handler (Supports /api/ai/chat, /api/openai/chat, /api/gemini/chat)
+  const handleAiChat = async (req: express.Request, res: express.Response) => {
     const { message, history = [] } = req.body;
 
     const getFallbackChatReply = (query: string) => {
@@ -261,7 +247,7 @@ Recko-India supports:
       if (q.includes('agreement') || q.includes('lease') || q.includes('notice') || q.includes('lock in') || q.includes('lock-in')) {
         return `📄 **Rental Agreement & Legal Advice (India):**\n\n• **Standard Duration:** 11-Month Leave & License agreement is legal and standard across India.\n• **Notice Period:** Standard is 1 month written notice by either tenant or landlord.\n• **Lock-in Period:** Usually 3 to 6 months.\n• Make sure maintenance charges, painting costs, and deposit refund terms are explicitly mentioned in writing.`;
       }
-      if (q.includes('car') || q.includes('bike') || q.includes('scooty') || q.includes('vehicle') || q.includes('drive')) {
+      if (q.includes('car') || q.includes('bike') || q.includes('scooty') || q.includes('vehicle') || q.includes('drive') || q.includes('thar') || q.includes('creta')) {
         return `🚗 **Vehicle Rental Policies on Recko-India:**\n\n• **Required Documents:** Valid Indian Driving License & Original Aadhaar Card.\n• **Security Deposit:** ₹2,000 to ₹5,000 (Refundable within 24 hours of vehicle return).\n• **Fuel Policy:** Same-to-same fuel level return.\n• All self-drive cars (Creta, Thar, Swift, Ertiga) and bikes (Hunter 350, Activa) include 24/7 roadside assistance!`;
       }
       if (q.includes('pg') || q.includes('student') || q.includes('hostel') || q.includes('food')) {
@@ -298,12 +284,8 @@ Recko-India supports:
 
       const cleanMsg = message.trim();
 
-      if (!process.env.GEMINI_API_KEY) {
-        return res.json({ reply: getFallbackChatReply(cleanMsg) });
-      }
-
       const systemInstruction = `You are Recko-India's 24/7 Smart AI Rental Assistant & Concierge.
-CRITICAL LANGUAGE RULE: Respond in the user's preferred language. If the user writes in Hindi or Hinglish (e.g., 'mujhe car chahiye', 'flat ka deposit kitna hai'), reply in natural, friendly, fluent Hindi/Hinglish. If the user writes in English, reply in professional English.
+CRITICAL LANGUAGE RULE: Respond in the user's preferred language. If the user writes in Hindi or Hinglish (e.g., 'mujhe car chahiye', 'flat ka deposit kitna hai', 'room rent par lena hai'), reply in natural, friendly, fluent Hindi/Hinglish. If the user writes in English, reply in professional English.
 
 Recko-India is India's premier unified rental marketplace covering:
 1. Residential Properties (1/2/3/4 BHK flats, villas, shared rooms, student PGs with mess & Wi-Fi)
@@ -324,46 +306,43 @@ Key Guarantees & Policies:
 
 Formatting: Use bullet points, bold headers, and clear concise paragraphs.`;
 
-      // Build clean contents alternating user and model
-      const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
-
-      if (Array.isArray(history)) {
-        for (const h of history) {
-          const rawRole = h.role === 'user' || h.role === 'renter' ? 'user' : 'model';
-          const rawText = (h.content || h.text || '').trim();
-          if (!rawText) continue;
-
-          if (contents.length > 0 && contents[contents.length - 1].role === rawRole) {
-            contents[contents.length - 1].parts[0].text += `\n${rawText}`;
-          } else {
-            contents.push({ role: rawRole, parts: [{ text: rawText }] });
-          }
-        }
-      }
-
-      // Append latest user message
-      if (contents.length > 0 && contents[contents.length - 1].role === 'user') {
-        contents[contents.length - 1].parts[0].text += `\n${cleanMsg}`;
-      } else {
-        contents.push({ role: 'user', parts: [{ text: cleanMsg }] });
-      }
-
       let reply = '';
-      try {
-        const response = await ai.models.generateContent({
-          model: 'gemini-3.6-flash',
-          contents,
-          config: {
-            systemInstruction,
-            temperature: 0.7,
+
+      if (openai) {
+        try {
+          const formattedMessages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+            { role: 'system', content: systemInstruction }
+          ];
+
+          if (Array.isArray(history)) {
+            for (const h of history) {
+              const rawRole = (h.role === 'user' || h.role === 'renter') ? 'user' : 'assistant';
+              const rawText = (h.content || h.text || '').trim();
+              if (rawText) {
+                formattedMessages.push({ role: rawRole, content: rawText });
+              }
+            }
           }
-        });
-        reply = response?.text || '';
-      } catch (e1) {
+
+          formattedMessages.push({ role: 'user', content: cleanMsg });
+
+          const completion = await openai.chat.completions.create({
+            model: openaiModel,
+            messages: formattedMessages,
+            temperature: 0.7,
+            max_tokens: 800,
+          });
+
+          reply = completion.choices[0]?.message?.content || '';
+        } catch (openaiErr: any) {
+          console.warn('[OpenAI Chat notice - using resilient fallback]:', openaiErr?.message || openaiErr);
+          reply = getFallbackChatReply(cleanMsg);
+        }
+      } else {
         reply = getFallbackChatReply(cleanMsg);
       }
 
-      if (!reply) {
+      if (!reply || !reply.trim()) {
         reply = getFallbackChatReply(cleanMsg);
       }
 
@@ -373,7 +352,12 @@ Formatting: Use bullet points, bold headers, and clear concise paragraphs.`;
         reply: getFallbackChatReply(message || '')
       });
     }
-  });
+  };
+
+  // Register AI Chatbot endpoints with aliases
+  app.post('/api/ai/chat', handleAiChat);
+  app.post('/api/openai/chat', handleAiChat);
+  app.post('/api/gemini/chat', handleAiChat);
 
   // Student ID Verification Endpoint
   app.post('/api/verify-student', async (req, res) => {
