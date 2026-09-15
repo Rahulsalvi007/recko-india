@@ -144,8 +144,8 @@ export function scanAllAssetsForDuplicateImages(assets: AllSystemAssets): Duplic
 
   // Filter out unique images, keep duplicates
   const incidents: DuplicateImageIncident[] = [];
-
   let incidentCount = 0;
+
   imageMap.forEach((entry, sig) => {
     if (entry.occurrences.length > 1) {
       incidentCount++;
@@ -172,6 +172,60 @@ export function scanAllAssetsForDuplicateImages(assets: AllSystemAssets): Duplic
       };
 
       incidents.push(incident);
+    }
+  });
+
+  // 9. AI Fake Owner & Suspicious Contact Auditor
+  const allItemsList: { item: any; type: DuplicateImageMatch['assetType'] }[] = [
+    ...(assets.properties || []).map(p => ({ item: p, type: 'property' as const })),
+    ...(assets.vehicles || []).map(v => ({ item: v, type: 'vehicle' as const })),
+    ...(assets.hotels || []).map(h => ({ item: h, type: 'hotel' as const })),
+    ...(assets.restaurants || []).map(r => ({ item: r, type: 'restaurant' as const })),
+    ...(assets.libraries || []).map(l => ({ item: l, type: 'library' as const })),
+    ...(assets.clothing || []).map(c => ({ item: c, type: 'clothing' as const })),
+    ...(assets.sportsTurfs || []).map(s => ({ item: s, type: 'sports_turf' as const })),
+    ...(assets.generalItems || []).map(g => ({ item: g, type: 'general' as const }))
+  ];
+
+  allItemsList.forEach(({ item, type }) => {
+    const ownerName = (item.ownerName || '').toLowerCase();
+    const ownerContact = item.ownerContact || '';
+    const rentVal = item.rentPerMonth || item.rentPerDay || item.price || item.rentPerHour || 0;
+    const isFakeName = ['fake', 'test', 'dummy', 'unknown', 'user123', 'admin123', 'abc'].some(k => ownerName.includes(k));
+    const isFakeContact = !ownerContact || ownerContact.length < 10 || ['0000000000', '1234567890', '9999999999', '1111111111'].some(k => ownerContact.includes(k));
+    const isUnrealisticRent = rentVal > 0 && rentVal <= 10;
+
+    if (isFakeName || isFakeContact || isUnrealisticRent) {
+      incidentCount++;
+      const matchObj: DuplicateImageMatch = {
+        assetId: item.id,
+        assetTitle: item.title || 'Suspicious Asset',
+        assetType: type,
+        ownerId: item.ownerId || '',
+        ownerName: item.ownerName || 'Unverified Host',
+        ownerContact: item.ownerContact || 'Missing Phone',
+        city: item.city || 'India',
+        category: item.category || type,
+        isFirstSeen: true
+      };
+
+      const reasons = [];
+      if (isFakeName) reasons.push(`Suspicious Owner Name (${item.ownerName})`);
+      if (isFakeContact) reasons.push(`Invalid/Dummy Phone Number (${item.ownerContact || 'None'})`);
+      if (isUnrealisticRent) reasons.push(`Unrealistically Low Rent (₹${rentVal})`);
+
+      incidents.push({
+        id: `fake-owner-${item.id}-${incidentCount}`,
+        imageUrl: (item.images && item.images[0]) ? item.images[0] : 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=400&q=80',
+        imageSignature: `fake_sig_${item.id}`,
+        detectedAt: new Date().toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }),
+        severity: 'High',
+        flagType: 'Stock / Stolen Image Pattern',
+        reason: `AI Fraud Engine Flagged: ${reasons.join(', ')}. High risk of fake listing / unverified owner account.`,
+        originalAsset: matchObj,
+        duplicateAssets: [matchObj],
+        status: 'Detected'
+      });
     }
   });
 

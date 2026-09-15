@@ -112,7 +112,7 @@ export const AIRecommendedSection: React.FC<AIRecommendedSectionProps> = ({
     let score = 0;
     const isCity = !selectedCity || p.city?.toLowerCase().includes(selectedCity.toLowerCase().trim());
     if (isCity) score += 60;
-    if (p.rentPerMonth <= maxBudget) score += 30;
+    if ((p.rentPerMonth || 0) <= maxBudget) score += 30;
     score += (p.rating || 4.5) * 4;
     if (p.ownerVerified) score += 10;
 
@@ -120,31 +120,32 @@ export const AIRecommendedSection: React.FC<AIRecommendedSectionProps> = ({
       id: p.id,
       category: 'property',
       categoryLabel: p.subType || 'Property / PG',
-      title: p.title,
-      image: p.images[0] || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=80',
-      location: p.location,
-      city: p.city,
-      price: p.rentPerMonth,
+      title: p.title || 'Verified Property',
+      image: p.images?.[0] || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=800&q=80',
+      location: p.location || '',
+      city: p.city || '',
+      price: p.rentPerMonth || 0,
       priceLabel: '/month',
       rating: p.rating || 4.8,
       reviewsCount: p.reviewsCount || 24,
       ownerName: p.ownerName || 'Verified Landlord',
-      ownerContact: p.ownerContact,
-      ownerVerified: p.ownerVerified,
+      ownerContact: p.ownerContact || '+91 98765 43210',
+      ownerVerified: p.ownerVerified || false,
       score,
       matchReason: isCity
-        ? `Top-rated home in ${p.city} • Verified owner with instant move-in`
+        ? `Top-rated home in ${p.city || 'prime city location'} • Verified owner with instant move-in`
         : `Premium stay • High safety rating & Zero brokerage`,
       originalItem: p
     });
   });
 
   // 2. Vehicles (Cars & Bikes)
-  vehicles.forEach((v) => {
+  vehicles.forEach((v: any) => {
     let score = 5; // boost diversity
     const isCity = !selectedCity || v.city?.toLowerCase().includes(selectedCity.toLowerCase().trim());
     if (isCity) score += 65;
-    if (v.rentPerDay * 30 <= maxBudget || v.rentPerDay <= maxBudget) score += 30;
+    const vPrice = v.rentPerDay || v.dailyPrice || v.rentPerHour || 0;
+    if (vPrice * 30 <= maxBudget || vPrice <= maxBudget) score += 30;
     score += (v.rating || 4.7) * 4;
     if (v.unlimitedKm) score += 10;
     if (v.freeHelmetOrFastag) score += 5;
@@ -152,13 +153,13 @@ export const AIRecommendedSection: React.FC<AIRecommendedSectionProps> = ({
     allCandidates.push({
       id: v.id,
       category: 'vehicle',
-      categoryLabel: `${v.vehicleType.toUpperCase()} • ${v.fuelType || 'Clean'}`,
-      title: v.title,
-      image: v.images[0] || 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=800&q=80',
-      location: v.location,
-      city: v.city,
-      price: v.rentPerDay,
-      priceLabel: '/day',
+      categoryLabel: `${(v.vehicleType || 'Vehicle').toUpperCase()} • ${v.fuelType || 'Clean'}`,
+      title: v.title || `${v.brand || ''} ${v.modelName || 'Vehicle'}`.trim(),
+      image: v.images?.[0] || 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=800&q=80',
+      location: v.location || '',
+      city: v.city || '',
+      price: vPrice,
+      priceLabel: v.rentPerDay ? '/day' : '/hr',
       rating: v.rating || 4.9,
       reviewsCount: v.reviewsCount || 38,
       ownerName: v.ownerName || 'Express Wheels Host',
@@ -166,7 +167,7 @@ export const AIRecommendedSection: React.FC<AIRecommendedSectionProps> = ({
       ownerVerified: true,
       score,
       matchReason: isCity
-        ? `Self-drive vehicle available near ${v.location} • Instant delivery`
+        ? `Self-drive vehicle available near ${v.location || v.city || 'location'} • Instant delivery`
         : `Top-rated sanitized vehicle • Unlimited KMs available`,
       originalItem: v
     });
@@ -182,12 +183,12 @@ export const AIRecommendedSection: React.FC<AIRecommendedSectionProps> = ({
     allCandidates.push({
       id: c.id,
       category: 'clothing',
-      categoryLabel: `${c.clothingType} • ${c.gender}`,
-      title: c.title,
-      image: c.images[0] || 'https://images.unsplash.com/photo-1594938298603-c8148c4dae35?w=800&q=80',
-      location: c.location,
-      city: c.city,
-      price: c.rentPerDay,
+      categoryLabel: `${c.clothingType || 'Outfit'} • ${c.gender || 'All'}`,
+      title: c.title || 'Designer Outfit',
+      image: c.images?.[0] || 'https://images.unsplash.com/photo-1594938298603-c8148c4dae35?w=800&q=80',
+      location: c.location || '',
+      city: c.city || '',
+      price: c.rentPerDay || 0,
       priceLabel: '/day',
       rating: c.rating || 4.9,
       reviewsCount: c.reviewsCount || 42,
@@ -201,7 +202,7 @@ export const AIRecommendedSection: React.FC<AIRecommendedSectionProps> = ({
   });
 
   // 4. Sports Turfs
-  sportsTurfs.forEach((t) => {
+  sportsTurfs.forEach((t: any) => {
     let score = 5;
     const isCity = !selectedCity || t.city?.toLowerCase().includes(selectedCity.toLowerCase().trim());
     if (isCity) score += 60;
@@ -210,12 +211,12 @@ export const AIRecommendedSection: React.FC<AIRecommendedSectionProps> = ({
     allCandidates.push({
       id: t.id,
       category: 'turf',
-      categoryLabel: `${t.turfType} Turf`,
-      title: t.title,
-      image: t.images[0] || 'https://images.unsplash.com/photo-1529900248061-5652ab58872f?w=800&q=80',
-      location: t.location,
-      city: t.city,
-      price: t.pricePerHour,
+      categoryLabel: `${t.turfType || 'Sports'} Turf`,
+      title: t.title || 'Sports Arena',
+      image: t.images?.[0] || 'https://images.unsplash.com/photo-1529900248061-5652ab58872f?w=800&q=80',
+      location: t.location || '',
+      city: t.city || '',
+      price: t.rentPerHour || t.pricePerHour || 0,
       priceLabel: '/hr',
       rating: t.rating || 4.8,
       reviewsCount: t.reviewsCount || 56,
@@ -229,7 +230,7 @@ export const AIRecommendedSection: React.FC<AIRecommendedSectionProps> = ({
   });
 
   // 5. Hotels
-  hotels.forEach((h) => {
+  hotels.forEach((h: any) => {
     let score = 0;
     const isCity = !selectedCity || h.city?.toLowerCase().includes(selectedCity.toLowerCase().trim());
     if (isCity) score += 60;
@@ -238,12 +239,12 @@ export const AIRecommendedSection: React.FC<AIRecommendedSectionProps> = ({
     allCandidates.push({
       id: h.id,
       category: 'hotel',
-      categoryLabel: `${h.starCategory || 4}-Star Stay`,
-      title: h.title,
-      image: h.images[0] || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80',
-      location: h.location,
-      city: h.city,
-      price: h.rooms[0]?.pricePerNight || 2499,
+      categoryLabel: `${h.starCategory || h.starRating || 4}-Star Stay`,
+      title: h.title || h.name || 'Hotel Stay',
+      image: h.images?.[0] || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=800&q=80',
+      location: h.location || '',
+      city: h.city || '',
+      price: h.rooms?.[0]?.pricePerNight || h.pricePerNight || 0,
       priceLabel: '/night',
       rating: h.rating || 4.7,
       reviewsCount: h.reviewsCount || 88,
@@ -251,13 +252,13 @@ export const AIRecommendedSection: React.FC<AIRecommendedSectionProps> = ({
       ownerContact: h.ownerContact || '+91 98765 43210',
       ownerVerified: true,
       score,
-      matchReason: `Verified hotel in ${h.city} • Free cancellation & breakfast`,
+      matchReason: `Verified hotel in ${h.city || 'prime city location'} • Free cancellation & breakfast`,
       originalItem: h
     });
   });
 
   // 6. General Items / Gadgets
-  generalItems.forEach((g) => {
+  generalItems.forEach((g: any) => {
     let score = 0;
     const isCity = !selectedCity || g.city?.toLowerCase().includes(selectedCity.toLowerCase().trim());
     if (isCity) score += 60;
@@ -266,13 +267,13 @@ export const AIRecommendedSection: React.FC<AIRecommendedSectionProps> = ({
     allCandidates.push({
       id: g.id,
       category: 'general',
-      categoryLabel: g.itemCategory || 'Gadget & Gear',
-      title: g.title,
-      image: g.images[0] || 'https://images.unsplash.com/photo-1606813907291-d86efa9b94db?w=800&q=80',
-      location: g.location,
-      city: g.city,
-      price: g.rentPerDay,
-      priceLabel: '/day',
+      categoryLabel: g.itemCategory || g.subType || 'Gadget & Gear',
+      title: g.title || 'Rental Item',
+      image: g.images?.[0] || 'https://images.unsplash.com/photo-1606813907291-d86efa9b94db?w=800&q=80',
+      location: g.location || '',
+      city: g.city || '',
+      price: g.rentPerDay || g.pricePerDay || g.rentPerMonth || 0,
+      priceLabel: g.rentPerMonth ? '/month' : '/day',
       rating: g.rating || 4.8,
       reviewsCount: g.reviewsCount || 19,
       ownerName: g.ownerName || 'Sharma Electronics & Vault',
@@ -357,7 +358,7 @@ export const AIRecommendedSection: React.FC<AIRecommendedSectionProps> = ({
         id: rec.id,
         title: rec.title,
         image: rec.image,
-        priceDisplay: `₹${rec.price.toLocaleString('en-IN')}${rec.priceLabel}`,
+        priceDisplay: `₹${(rec.price || 0).toLocaleString('en-IN')}${rec.priceLabel}`,
         ownerName: rec.ownerName,
         ownerContact: rec.ownerContact,
         category: rec.categoryLabel,
@@ -373,7 +374,7 @@ export const AIRecommendedSection: React.FC<AIRecommendedSectionProps> = ({
       itemTitle: rec.title,
       itemCategory: rec.categoryLabel,
       ownerName: rec.ownerName,
-      price: `₹${rec.price.toLocaleString('en-IN')}${rec.priceLabel}`,
+      price: `₹${(rec.price || 0).toLocaleString('en-IN')}${rec.priceLabel}`,
       location: rec.location,
       city: rec.city
     });
@@ -434,7 +435,7 @@ export const AIRecommendedSection: React.FC<AIRecommendedSectionProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {topRecommendations.map((rec, index) => (
           <div
-            key={`${rec.category}-${rec.id}`}
+            key={`${rec.category}-${rec.id}-${index}`}
             className="bg-zinc-900/90 border border-zinc-800 hover:border-amber-400/60 rounded-2xl p-3.5 transition-all hover:scale-[1.01] flex flex-col justify-between space-y-3 group shadow-md"
           >
             <div className="space-y-2">
@@ -461,7 +462,7 @@ export const AIRecommendedSection: React.FC<AIRecommendedSectionProps> = ({
 
                 {/* Price Tag */}
                 <div className="absolute bottom-2 right-2 bg-amber-400 text-zinc-950 text-xs font-black px-2.5 py-1 rounded-lg shadow-md flex items-center space-x-0.5">
-                  <span>₹{rec.price.toLocaleString('en-IN')}</span>
+                  <span>₹{(rec.price || 0).toLocaleString('en-IN')}</span>
                   <span className="text-[10px] text-zinc-800 font-semibold">{rec.priceLabel}</span>
                 </div>
 

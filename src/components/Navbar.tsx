@@ -126,7 +126,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   // Category Definitions
   const allCategories: { id: MainCategory; label: string; icon: React.ReactNode; desc: string }[] = [
-    { id: 'all', label: '🌟 All Assets', icon: <Sparkles className="h-3.5 w-3.5" />, desc: 'Sabhi Rentals: Homes, Vehicles, Hotels, Clothes, Turfs & More' },
+    { id: 'all', label: ' All Assets', icon: <Sparkles className="h-3.5 w-3.5" />, desc: 'Sabhi Rentals: Homes, Vehicles, Hotels, Clothes, Turfs & More' },
     { id: 'residential', label: 'Properties', icon: <Home className="h-3.5 w-3.5" />, desc: '1-4 BHK Flats, Villas, Homes' },
     { id: 'commercial', label: 'Commercial', icon: <Briefcase className="h-3.5 w-3.5" />, desc: 'Offices, Shops, Showrooms' },
     { id: 'student', label: 'Student PGs', icon: <GraduationCap className="h-3.5 w-3.5" />, desc: 'Girls/Boys PGs with Mess' },
@@ -206,7 +206,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className={`text-[10px] font-bold tracking-wide hidden sm:flex items-center space-x-1 mt-0.5 ${
                   currentTheme === 'light' ? 'text-zinc-500' : 'text-amber-300/70'
                 }`}>
-                  <span>India's Premium Escrow Rental Hub</span>
+                  <span>India's Premium Escrow Rental Platform</span>
                 </span>
               </div>
             </button>
@@ -710,7 +710,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     >
                       <div className="flex items-center space-x-2.5 truncate mr-2">
                         <Building2 className={`h-4 w-4 shrink-0 ${loggedInLandlord ? 'text-black' : 'text-amber-400'}`} />
-                        <span className="truncate">Property Owner / Host Portal</span>
+                        <span className="truncate">{loggedInLandlord ? `${loggedInLandlord.name} (Host Dashboard)` : 'Property Owner / Host Portal'}</span>
                       </div>
                       {loggedInLandlord ? (
                         <span className="text-[9px] font-black px-2 py-0.5 rounded-full bg-black text-amber-400 shrink-0">

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { GeneralItem } from '../types';
+import { makePhoneCall } from '../utils/phoneCall';
 import {
   X,
   Star,
@@ -149,10 +150,15 @@ export const GeneralItemDetailModal: React.FC<GeneralItemDetailModalProps> = ({
                       <span>{item.ownerName}</span>
                       {item.ownerVerified && <ShieldCheck className="h-4 w-4 text-emerald-500" />}
                     </p>
-                    <p className="text-xs font-bold text-amber-600 dark:text-amber-400 flex items-center space-x-1">
+                    <button
+                      type="button"
+                      onClick={() => makePhoneCall(item.ownerContact, item.ownerName)}
+                      className="text-xs font-bold text-amber-600 dark:text-amber-400 flex items-center space-x-1 hover:underline cursor-pointer"
+                      title="Click to Call Provider"
+                    >
                       <Phone className="h-3 w-3" />
-                      <span>{item.ownerContact}</span>
-                    </p>
+                      <span>{item.ownerContact || '+91 98765 43210'} (Call)</span>
+                    </button>
                   </div>
                 </div>
               </div>

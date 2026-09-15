@@ -10,9 +10,11 @@ import {
   GraduationCap,
   Heart,
   Eye,
-  Calendar
+  Calendar,
+  Phone
 } from 'lucide-react';
 import { Property } from '../types';
+import { makePhoneCall } from '../utils/phoneCall';
 
 interface PropertyCardProps {
   property: Property;
@@ -198,6 +200,14 @@ export const PropertyCard: React.FC<PropertyCardProps> = ({
           </div>
 
           <div className="flex items-center space-x-2">
+            <button
+              onClick={() => makePhoneCall(property.ownerContact, property.ownerName)}
+              className="p-2.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded-xl transition-colors cursor-pointer border border-amber-500/30"
+              title={`Call Owner (${property.ownerContact || 'Landlord'})`}
+            >
+              <Phone className="h-4 w-4" />
+            </button>
+
             <button
               onClick={() => onSelect(property)}
               className="p-2.5 text-slate-700 dark:text-zinc-300 hover:text-slate-950 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-zinc-800 rounded-xl transition-colors cursor-pointer"

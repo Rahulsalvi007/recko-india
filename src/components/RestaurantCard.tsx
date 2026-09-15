@@ -59,11 +59,10 @@ export const RestaurantCard: React.FC<RestaurantCardProps> = ({
               e.stopPropagation();
               onToggleWishlist(restaurant);
             }}
-            className={`absolute top-3.5 right-3.5 p-2 rounded-full backdrop-blur-md transition-all shadow-md z-10 cursor-pointer ${
-              isWishlisted
+            className={`absolute top-3.5 right-3.5 p-2 rounded-full backdrop-blur-md transition-all shadow-md z-10 cursor-pointer ${isWishlisted
                 ? 'bg-rose-500 text-white'
                 : 'bg-slate-950/70 text-white hover:bg-slate-950'
-            }`}
+              }`}
             title="Save to Wishlist"
           >
             <Heart className={`h-4 w-4 ${isWishlisted ? 'fill-current' : ''}`} />

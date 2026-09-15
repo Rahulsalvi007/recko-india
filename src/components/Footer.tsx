@@ -12,9 +12,25 @@ import {
   PlusCircle,
   X,
   Sparkles,
-  ShieldCheck
+  ShieldCheck,
+  Phone,
+  MessageCircle,
+  ChevronDown,
+  Award,
+  Users,
+  Check,
+  Building2,
+  Car,
+  Shirt,
+  Wrench,
+  ExternalLink,
+  ShieldAlert,
+  Heart,
+  Calendar
 } from 'lucide-react';
 import { MainCategory } from '../types';
+import { makePhoneCall } from '../utils/phoneCall';
+import { openWhatsAppChat } from '../utils/whatsapp';
 
 interface FooterProps {
   setActiveCategory: (cat: MainCategory) => void;
@@ -34,11 +50,13 @@ export const Footer: React.FC<FooterProps> = ({
   // Contact Form State inside Contact Modal
   const [contactName, setContactName] = useState('');
   const [contactEmail, setContactEmail] = useState('');
+  const [contactCategory, setContactCategory] = useState('General Support');
   const [contactMessage, setContactMessage] = useState('');
   const [contactSubmitted, setContactSubmitted] = useState(false);
 
-  // FAQ Active Accordion
+  // FAQ Active Accordion & Filter
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
+  const [faqCategoryFilter, setFaqCategoryFilter] = useState<'all' | 'tenants' | 'owners' | 'payments'>('all');
 
   const handleContactSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,16 +73,34 @@ export const Footer: React.FC<FooterProps> = ({
 
   const FAQS_DATA = [
     {
-      q: 'How does Recko-India promise 100% Zero Brokerage?',
-      a: 'Recko-India directly connects tenants with verified property owners with zero middleman commission or agent fees.'
+      category: 'tenants',
+      q: 'How does Recko India promise 100% Zero Brokerage?',
+      a: 'Recko India directly connects tenants with verified property & asset owners without any brokers, middlemen, or agent commissions. You communicate directly with owners!'
     },
     {
-      q: 'How can owners list a property on Recko-India?',
-      a: 'Click "List Your Property" to complete quick owner verification and publish your listing for free.'
+      category: 'tenants',
+      q: 'Is my ₹99 booking token 100% refundable?',
+      a: 'Yes! The ₹99 token reserves your slot and initiates owner contact. If an owner declines your booking request or if you cancel before final confirmation, 100% of your ₹99 is instantly refunded to your original payment method.'
     },
     {
+      category: 'owners',
+      q: 'How can owners list properties, vehicles, or commercial items?',
+      a: 'Click "Owner Portal" or "List Property" to register your account via Email OTP. Once logged in, click "Add New Listing" to upload up to 4 photos (max 500 KB each) and set your rental rates.'
+    },
+    {
+      category: 'payments',
       q: 'How does Free Email OTP Verification work?',
-      a: 'During login or registration, a free 6-digit OTP code is sent to your email to verify your identity securely.'
+      a: 'During login or password reset, a secure 6-digit OTP code is dispatched directly to your registered email address. This ensures zero unauthorized logins and 100% account protection.'
+    },
+    {
+      category: 'tenants',
+      q: 'What types of assets can I rent on Recko India?',
+      a: 'You can rent Residential Properties (Flats/PGs), Stays & Hotels, Vehicles (Cars/Bikes), Commercial Appliances (TVs, Fridges, ACs), Sports Turfs, Libraries, and Wedding Outfits!'
+    },
+    {
+      category: 'owners',
+      q: 'How are listings and property owners verified on Recko India?',
+      a: 'Our AI Security Auditor automatically checks listing photos, pricing benchmarks, and government ID documents to maintain a 100% scam-free platform.'
     }
   ];
 
@@ -88,7 +124,7 @@ export const Footer: React.FC<FooterProps> = ({
               </div>
               <div>
                 <h3 className="font-extrabold text-base tracking-tight text-white group-hover:text-indigo-300 transition-colors">
-                  Recko-India India
+                  Recko-India
                 </h3>
                 <p className="text-[10px] font-bold text-indigo-400">
                   Your Perfect Rental Partner • Zero Brokerage
@@ -98,14 +134,14 @@ export const Footer: React.FC<FooterProps> = ({
 
             {/* Quick Essential Contact Info */}
             <div className="flex flex-wrap items-center justify-center gap-4 text-xs text-zinc-400 font-medium">
-              <a href="tel:18004198080" className="flex items-center space-x-1.5 hover:text-emerald-400 transition-colors">
+              <a href="tel:+916367959137" className="flex items-center space-x-1.5 hover:text-emerald-400 transition-colors">
                 <PhoneCall className="h-3.5 w-3.5 text-emerald-400" />
-                <span>+91 1800-419-8080</span>
+                <span>+91 6367959137</span>
               </a>
               <span className="text-zinc-700 hidden sm:inline">•</span>
               <a href="mailto:support@Recko-India.in" className="flex items-center space-x-1.5 hover:text-amber-400 transition-colors">
                 <Mail className="h-3.5 w-3.5 text-amber-400" />
-                <span>support@Recko-India.in</span>
+                <span>infotechjahvi@gmail.com</span>
               </a>
               <span className="text-zinc-700 hidden sm:inline">•</span>
               <button
@@ -168,7 +204,7 @@ export const Footer: React.FC<FooterProps> = ({
 
           {/* Bottom Bar: Clean Copyright */}
           <div className="pt-2 text-center text-[11px] text-zinc-500 font-medium">
-            © {new Date().getFullYear()} Recko-India India. All rights reserved.
+            © {new Date().getFullYear()} Recko-India. All rights reserved.
           </div>
 
         </div>
@@ -176,13 +212,13 @@ export const Footer: React.FC<FooterProps> = ({
 
       {/* POPUP MODAL FOR ESSENTIAL LINKS */}
       {activeModalPage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-zinc-900 border border-zinc-800 text-zinc-100 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden my-auto flex flex-col max-h-[85vh]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-gradient-to-br from-slate-950 via-zinc-900 to-slate-950 border border-amber-500/30 text-slate-100 w-full max-w-2xl rounded-3xl shadow-[0_0_50px_rgba(245,158,11,0.15)] overflow-hidden my-auto flex flex-col max-h-[90vh]">
             
             {/* Modal Header */}
-            <div className="bg-zinc-950 p-4 border-b border-zinc-800 flex items-center justify-between shrink-0">
-              <div className="flex items-center space-x-2.5">
-                <div className="p-2 bg-indigo-600 text-white rounded-xl">
+            <div className="bg-slate-950/90 p-5 border-b border-amber-500/20 flex items-center justify-between shrink-0 shadow-md">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 bg-gradient-to-tr from-amber-500 via-yellow-400 to-amber-300 text-slate-950 rounded-2xl shadow-lg shadow-amber-500/20 font-black">
                   {activeModalPage === 'about' && <Info className="h-5 w-5" />}
                   {activeModalPage === 'contact' && <PhoneCall className="h-5 w-5" />}
                   {activeModalPage === 'privacy' && <Lock className="h-5 w-5" />}
@@ -190,172 +226,427 @@ export const Footer: React.FC<FooterProps> = ({
                   {activeModalPage === 'faqs' && <HelpCircle className="h-5 w-5" />}
                 </div>
                 <div>
-                  <h2 className="text-sm font-extrabold text-white">
-                    {activeModalPage === 'about' && 'About Recko-India'}
-                    {activeModalPage === 'contact' && 'Contact Support'}
-                    {activeModalPage === 'privacy' && 'Privacy Policy'}
-                    {activeModalPage === 'terms' && 'Terms & Conditions'}
-                    {activeModalPage === 'faqs' && 'Frequently Asked Questions'}
+                  <h2 className="text-base font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-400">
+                    {activeModalPage === 'about' && 'About Recko India'}
+                    {activeModalPage === 'contact' && 'Contact Support & Helpdesk'}
+                    {activeModalPage === 'privacy' && 'Privacy & Data Security Policy'}
+                    {activeModalPage === 'terms' && 'Terms of Service & Conditions'}
+                    {activeModalPage === 'faqs' && 'Frequently Asked Questions (FAQ)'}
                   </h2>
-                  <p className="text-[10px] text-amber-400 font-bold">Recko-India India</p>
+                  <p className="text-[11px] text-amber-400/90 font-mono font-bold flex items-center space-x-1 mt-0.5">
+                    <Sparkles className="h-3 w-3 text-amber-400" />
+                    <span>Recko India • Official Verified System Portal</span>
+                  </p>
                 </div>
               </div>
 
               <button
                 type="button"
                 onClick={() => setActiveModalPage(null)}
-                className="p-1.5 text-zinc-400 hover:text-white rounded-lg bg-zinc-800/80 transition-colors cursor-pointer"
+                className="p-2 text-slate-400 hover:text-white rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 transition-all cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
 
             {/* Modal Body */}
-            <div className="p-5 overflow-y-auto space-y-4 text-xs text-zinc-300 leading-relaxed">
+            <div className="p-6 overflow-y-auto space-y-5 text-xs text-slate-300 leading-relaxed scrollbar-thin scrollbar-thumb-amber-500/30">
               
-              {/* ABOUT */}
+              {/* 🌟 1. ABOUT US */}
               {activeModalPage === 'about' && (
-                <div className="space-y-3">
-                  <div className="bg-zinc-950 border border-zinc-800 p-4 rounded-xl space-y-2">
-                    <h3 className="font-bold text-white flex items-center space-x-2">
-                      <Sparkles className="h-4 w-4 text-amber-400" />
-                      <span>Recko-India</span>
-                    </h3>
-                    <p className="text-zinc-400 leading-relaxed">
-                      Recko-India is a unified rental platform connecting tenants directly with verified property owners for flats, student PGs, hotels, commercial spaces, and vehicles with 100% zero brokerage.
+                <div className="space-y-4">
+                  {/* Hero Banner */}
+                  <div className="bg-gradient-to-r from-amber-950/40 via-yellow-950/20 to-slate-900 border border-amber-500/40 p-5 rounded-2xl space-y-2 shadow-inner">
+                    <div className="inline-flex items-center space-x-1.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider">
+                      <Award className="h-3.5 w-3.5 text-amber-400" />
+                      <span>India's #1 Multi-Asset Zero Brokerage Rental Platform</span>
+                    </div>
+                    <h3 className="text-base font-black text-white">Connecting Tenants & Verified Owners Directly</h3>
+                    <p className="text-slate-300 text-xs leading-relaxed">
+                      Recko India eliminates heavy broker commissions by enabling direct owner-tenant communication for flats, student PGs, hotels, commercial spaces, vehicles, wedding outfits, turfs, and appliances.
                     </p>
                   </div>
-                  <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800 space-y-1">
-                    <h4 className="font-extrabold text-emerald-400 text-xs">🛡 Direct Owner Contact</h4>
-                    <p className="text-zinc-400 text-[11px]">
-                      Connect directly with owners without middlemen or hidden fees.
-                    </p>
+
+                  {/* 4 Key Pillars */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-1.5 hover:border-amber-500/30 transition-all">
+                      <div className="flex items-center space-x-2 text-amber-400 font-extrabold text-xs">
+                        <Building2 className="h-4 w-4 text-amber-400" />
+                        <span>Direct Owner Contact</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-normal">
+                        No brokers, zero middleman fees. Connect directly via WhatsApp or Phone dialer.
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-1.5 hover:border-amber-500/30 transition-all">
+                      <div className="flex items-center space-x-2 text-emerald-400 font-extrabold text-xs">
+                        <ShieldCheck className="h-4 w-4 text-emerald-400" />
+                        <span>Verified & AI Audited</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-normal">
+                        24/7 AI Listing Security Auditor monitors owner IDs, photos, and fair rental pricing.
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-1.5 hover:border-amber-500/30 transition-all">
+                      <div className="flex items-center space-x-2 text-blue-400 font-extrabold text-xs">
+                        <Car className="h-4 w-4 text-blue-400" />
+                        <span>Multi-Category Rentals</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-normal">
+                        Rent homes, cars, bikes, hotel stays, commercial electronics, sports turfs, and outfits.
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-1.5 hover:border-amber-500/30 transition-all">
+                      <div className="flex items-center space-x-2 text-purple-400 font-extrabold text-xs">
+                        <KeyRound className="h-4 w-4 text-purple-400" />
+                        <span>Refundable ₹99 Escrow Token</span>
+                      </div>
+                      <p className="text-[11px] text-slate-400 leading-normal">
+                        Reserve listings with a 100% refundable ₹99 token deposit if rejected by owner.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Trust Stats Bar */}
+                  <div className="bg-slate-900/90 border border-slate-800 p-3.5 rounded-2xl flex flex-wrap items-center justify-between text-center gap-2">
+                    <div>
+                      <span className="text-sm font-black text-amber-400 block">10,000+</span>
+                      <span className="text-[10px] text-slate-400 font-bold">Verified Homes</span>
+                    </div>
+                    <div className="h-6 w-px bg-slate-800 hidden sm:block" />
+                    <div>
+                      <span className="text-sm font-black text-emerald-400 block">5,000+</span>
+                      <span className="text-[10px] text-slate-400 font-bold">Vehicles & Stays</span>
+                    </div>
+                    <div className="h-6 w-px bg-slate-800 hidden sm:block" />
+                    <div>
+                      <span className="text-sm font-black text-blue-400 block">₹0</span>
+                      <span className="text-[10px] text-slate-400 font-bold">Broker Commission</span>
+                    </div>
+                    <div className="h-6 w-px bg-slate-800 hidden sm:block" />
+                    <div>
+                      <span className="text-sm font-black text-yellow-300 block">4.9 ★</span>
+                      <span className="text-[10px] text-slate-400 font-bold">User Satisfaction</span>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* CONTACT */}
+              {/* 📞 2. CONTACT SUPPORT */}
               {activeModalPage === 'contact' && (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3 text-center">
-                    <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800">
-                      <PhoneCall className="h-5 w-5 text-emerald-400 mx-auto mb-1" />
-                      <p className="text-[10px] text-zinc-400">Toll-Free</p>
-                      <p className="font-bold text-white text-xs">6367959137</p>
-                    </div>
-                    <div className="bg-zinc-950 p-3 rounded-xl border border-zinc-800">
-                      <Mail className="h-5 w-5 text-amber-400 mx-auto mb-1" />
-                      <p className="text-[10px] text-zinc-400">Email</p>
-                      <p className="font-bold text-white text-xs">infotechjahvi@gmail.com</p>
-                    </div>
+                  {/* Quick Action Channels */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => makePhoneCall('+916367959137', 'Recko Support')}
+                      className="bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/40 p-3.5 rounded-2xl text-left transition-all cursor-pointer group shadow-sm"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <div className="p-2 bg-emerald-500/20 rounded-xl text-emerald-400 group-hover:scale-110 transition-transform">
+                          <Phone className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-emerald-300 font-bold uppercase">Direct Phone Call</p>
+                          <p className="font-mono font-black text-xs text-white">+91 6367959137</p>
+                        </div>
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => openWhatsAppChat({ phoneNumber: '+916367959137', customMessage: 'Hello Recko India Support, I need assistance with...' })}
+                      className="bg-green-950/60 hover:bg-green-900/80 border border-green-500/40 p-3.5 rounded-2xl text-left transition-all cursor-pointer group shadow-sm"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <div className="p-2 bg-green-500/20 rounded-xl text-green-400 group-hover:scale-110 transition-transform">
+                          <MessageCircle className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-green-300 font-bold uppercase">WhatsApp 24/7</p>
+                          <p className="font-mono font-black text-xs text-white">Click to Chat</p>
+                        </div>
+                      </div>
+                    </button>
+
+                    <a
+                      href="mailto:infotechjahvi@gmail.com"
+                      className="bg-amber-950/60 hover:bg-amber-900/80 border border-amber-500/40 p-3.5 rounded-2xl text-left transition-all cursor-pointer group shadow-sm block"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <div className="p-2 bg-amber-500/20 rounded-xl text-amber-400 group-hover:scale-110 transition-transform">
+                          <Mail className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-amber-300 font-bold uppercase">Official Email</p>
+                          <p className="font-mono font-black text-[11px] text-white truncate">infotechjahvi@gmail.com</p>
+                        </div>
+                      </div>
+                    </a>
                   </div>
 
+                  {/* Form or Submitted Notice */}
                   {contactSubmitted ? (
-                    <div className="bg-emerald-950/80 border border-emerald-800 text-emerald-300 p-4 rounded-xl text-center space-y-1">
-                      <CheckCircle2 className="h-6 w-6 text-emerald-400 mx-auto" />
-                      <p className="font-bold text-white text-xs">Message Sent!</p>
-                      <p className="text-[11px]">Our team will get back to you shortly.</p>
+                    <div className="bg-emerald-950/80 border border-emerald-600 text-emerald-200 p-6 rounded-2xl text-center space-y-2 shadow-lg animate-in zoom-in-95">
+                      <CheckCircle2 className="h-10 w-10 text-emerald-400 mx-auto" />
+                      <h4 className="font-black text-base text-white">Support Ticket Submitted Successfully!</h4>
+                      <p className="text-xs text-emerald-300 max-w-sm mx-auto">
+                        Thank you for reaching out, <strong className="text-white">{contactName}</strong>. Our dedicated customer success team will contact you at <strong className="text-white">{contactEmail}</strong> shortly.
+                      </p>
                     </div>
                   ) : (
-                    <form onSubmit={handleContactSubmit} className="bg-zinc-950 p-4 rounded-xl border border-zinc-800 space-y-3">
-                      <div>
-                        <label className="block text-zinc-400 font-bold mb-1 text-[11px]">Name *</label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="Your Name"
-                          value={contactName}
-                          onChange={(e) => setContactName(e.target.value)}
-                          className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-white outline-none focus:border-indigo-500 text-xs"
-                        />
+                    <form onSubmit={handleContactSubmit} className="bg-slate-950 p-5 rounded-2xl border border-slate-800 space-y-3.5 shadow-md">
+                      <h4 className="font-bold text-xs text-amber-300 flex items-center space-x-1.5">
+                        <Send className="h-3.5 w-3.5 text-amber-400" />
+                        <span>Send Us an Inquiry / Support Message</span>
+                      </h4>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-slate-300 font-bold mb-1 text-[11px]">Full Name *</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Enter your name"
+                            value={contactName}
+                            onChange={(e) => setContactName(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white outline-none focus:ring-2 focus:ring-amber-400 text-xs font-semibold"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-slate-300 font-bold mb-1 text-[11px]">Email Address *</label>
+                          <input
+                            type="email"
+                            required
+                            placeholder="your.email@gmail.com"
+                            value={contactEmail}
+                            onChange={(e) => setContactEmail(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white outline-none focus:ring-2 focus:ring-amber-400 text-xs font-semibold"
+                          />
+                        </div>
                       </div>
+
                       <div>
-                        <label className="block text-zinc-400 font-bold mb-1 text-[11px]">Email *</label>
-                        <input
-                          type="email"
-                          required
-                          placeholder="your@email.com"
-                          value={contactEmail}
-                          onChange={(e) => setContactEmail(e.target.value)}
-                          className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-white outline-none focus:border-indigo-500 text-xs"
-                        />
+                        <label className="block text-slate-300 font-bold mb-1 text-[11px]">Help Topic / Category *</label>
+                        <select
+                          value={contactCategory}
+                          onChange={(e) => setContactCategory(e.target.value)}
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white outline-none focus:ring-2 focus:ring-amber-400 text-xs font-semibold"
+                        >
+                          <option value="General Support">General Inquiry / Feedback</option>
+                          <option value="Booking Assistance">Tenant Booking & Token Refund</option>
+                          <option value="Owner Listing Help">Owner Listing & Registration</option>
+                          <option value="Security Issue">Report Scam or Suspicious Listing</option>
+                        </select>
                       </div>
+
                       <div>
-                        <label className="block text-zinc-400 font-bold mb-1 text-[11px]">Message *</label>
+                        <label className="block text-slate-300 font-bold mb-1 text-[11px]">Detailed Message *</label>
                         <textarea
                           required
-                          rows={2}
-                          placeholder="How can we help you?"
+                          rows={3}
+                          placeholder="Please describe how we can assist you..."
                           value={contactMessage}
                           onChange={(e) => setContactMessage(e.target.value)}
-                          className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2 text-white outline-none focus:border-indigo-500 text-xs"
+                          className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-white outline-none focus:ring-2 focus:ring-amber-400 text-xs font-semibold resize-none"
                         />
                       </div>
+
                       <button
                         type="submit"
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 rounded-lg text-xs transition-all cursor-pointer flex items-center justify-center space-x-1.5"
+                        className="w-full bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black py-3 rounded-xl text-xs transition-all shadow-lg cursor-pointer flex items-center justify-center space-x-2 border border-amber-300"
                       >
-                        <Send className="h-3.5 w-3.5" />
-                        <span>Send Message</span>
+                        <Send className="h-4 w-4 text-slate-950" />
+                        <span>Submit Support Ticket</span>
                       </button>
                     </form>
                   )}
                 </div>
               )}
 
-              {/* PRIVACY */}
+              {/* 🔒 3. PRIVACY POLICY */}
               {activeModalPage === 'privacy' && (
-                <div className="space-y-2 bg-zinc-950 p-4 rounded-xl border border-zinc-800 text-zinc-300">
-                  <h4 className="font-extrabold text-white text-xs">Privacy Commitment</h4>
-                  <p className="text-zinc-400 text-[11px] leading-relaxed">
-                    At Recko-India, user privacy and data security are strictly maintained. We do not sell user information to third parties. All personal contact details remain encrypted.
-                  </p>
-                </div>
-              )}
-
-              {/* TERMS */}
-              {activeModalPage === 'terms' && (
-                <div className="space-y-2 bg-zinc-950 p-4 rounded-xl border border-zinc-800 text-zinc-300">
-                  <h4 className="font-extrabold text-white text-xs">Terms & Conditions</h4>
-                  <p className="text-zinc-400 text-[11px] leading-relaxed">
-                    Recko-India provides a direct owner-tenant rental discovery service. Property owners are responsible for posting accurate details. Zero brokerage policy applies to direct listings.
-                  </p>
-                </div>
-              )}
-
-              {/* FAQS */}
-              {activeModalPage === 'faqs' && (
-                <div className="space-y-2">
-                  {FAQS_DATA.map((faq, idx) => (
-                    <div key={idx} className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden">
-                      <button
-                        type="button"
-                        onClick={() => setOpenFaqIndex(openFaqIndex === idx ? null : idx)}
-                        className="w-full p-3 text-left font-bold text-white text-xs flex items-center justify-between cursor-pointer"
-                      >
-                        <span>{faq.q}</span>
-                        <span className="text-zinc-400">{openFaqIndex === idx ? '−' : '+'}</span>
-                      </button>
-                      {openFaqIndex === idx && (
-                        <div className="px-3 pb-3 text-zinc-400 text-[11px] border-t border-zinc-800/80 pt-2">
-                          {faq.a}
-                        </div>
-                      )}
+                <div className="space-y-3.5">
+                  <div className="bg-indigo-950/60 border border-indigo-500/40 p-4 rounded-2xl text-indigo-200 space-y-1">
+                    <div className="flex items-center space-x-2 font-bold text-xs text-white">
+                      <Lock className="h-4 w-4 text-indigo-400 shrink-0" />
+                      <span>Bank-Grade Data Protection & End-to-End Encryption</span>
                     </div>
-                  ))}
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      At Recko India, your privacy is our highest priority. We safeguard all personal data using SSL 256-bit encryption.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-1">
+                      <h4 className="font-extrabold text-white text-xs flex items-center space-x-1.5">
+                        <Check className="h-3.5 w-3.5 text-amber-400" />
+                        <span>1. Zero Spam & Data Selling Protection</span>
+                      </h4>
+                      <p className="text-slate-400 text-[11px] leading-relaxed">
+                        We strictly promise never to sell, trade, or share your phone number, email address, or government ID details with third-party telemarketers or marketing agencies.
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-1">
+                      <h4 className="font-extrabold text-white text-xs flex items-center space-x-1.5">
+                        <Check className="h-3.5 w-3.5 text-amber-400" />
+                        <span>2. Controlled Contact Sharing</span>
+                      </h4>
+                      <p className="text-slate-400 text-[11px] leading-relaxed">
+                        Owner phone numbers and tenant contact details are exchanged ONLY when a genuine booking request with a refundable ₹99 token is initiated.
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-1">
+                      <h4 className="font-extrabold text-white text-xs flex items-center space-x-1.5">
+                        <Check className="h-3.5 w-3.5 text-amber-400" />
+                        <span>3. Secure Payment & UPI Credentials</span>
+                      </h4>
+                      <p className="text-slate-400 text-[11px] leading-relaxed">
+                        Recko India does not store your credit card, debit card, or UPI PIN data. Payments are processed securely via RBI-compliant gateway partners.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 📜 4. TERMS & CONDITIONS */}
+              {activeModalPage === 'terms' && (
+                <div className="space-y-3.5">
+                  <div className="bg-amber-950/50 border border-amber-500/40 p-4 rounded-2xl text-amber-200 space-y-1">
+                    <div className="flex items-center space-x-2 font-bold text-xs text-white">
+                      <FileText className="h-4 w-4 text-amber-400 shrink-0" />
+                      <span>Official Rental Discovery Terms of Service (Updated 2026)</span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 leading-relaxed">
+                      By accessing Recko India, users agree to follow our community trust protocols for direct rental transactions.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-1">
+                      <h4 className="font-extrabold text-white text-xs flex items-center space-x-1.5">
+                        <Check className="h-3.5 w-3.5 text-amber-400" />
+                        <span>1. 100% Zero Brokerage Policy</span>
+                      </h4>
+                      <p className="text-slate-400 text-[11px] leading-relaxed">
+                        Recko India acts solely as a direct discovery platform connecting tenants with asset owners. No user shall demand or pay broker commissions.
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-1">
+                      <h4 className="font-extrabold text-white text-xs flex items-center space-x-1.5">
+                        <Check className="h-3.5 w-3.5 text-amber-400" />
+                        <span>2. Listing Authenticity & Image Limits</span>
+                      </h4>
+                      <p className="text-slate-400 text-[11px] leading-relaxed">
+                        Property and asset owners are responsible for uploading real photos (up to 4 images, max 500 KB each) and accurate monthly rent and deposit terms.
+                      </p>
+                    </div>
+
+                    <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-1">
+                      <h4 className="font-extrabold text-white text-xs flex items-center space-x-1.5">
+                        <Check className="h-3.5 w-3.5 text-amber-400" />
+                        <span>3. Token Refund Guarantee</span>
+                      </h4>
+                      <p className="text-slate-400 text-[11px] leading-relaxed">
+                        The ₹99 booking token is 100% refundable if the owner rejects the booking or fails to confirm within the stipulated period.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ❓ 5. FAQS */}
+              {activeModalPage === 'faqs' && (
+                <div className="space-y-3">
+                  {/* Category Pills */}
+                  <div className="flex items-center space-x-2 border-b border-slate-800 pb-2">
+                    <button
+                      type="button"
+                      onClick={() => setFaqCategoryFilter('all')}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-[11px] cursor-pointer transition-all ${
+                        faqCategoryFilter === 'all'
+                          ? 'bg-amber-500 text-slate-950 shadow-md'
+                          : 'bg-slate-900 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      All Questions
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFaqCategoryFilter('tenants')}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-[11px] cursor-pointer transition-all ${
+                        faqCategoryFilter === 'tenants'
+                          ? 'bg-amber-500 text-slate-950 shadow-md'
+                          : 'bg-slate-900 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      For Tenants
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFaqCategoryFilter('owners')}
+                      className={`px-3 py-1.5 rounded-xl font-bold text-[11px] cursor-pointer transition-all ${
+                        faqCategoryFilter === 'owners'
+                          ? 'bg-amber-500 text-slate-950 shadow-md'
+                          : 'bg-slate-900 text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      For Owners
+                    </button>
+                  </div>
+
+                  {/* Accordion list */}
+                  <div className="space-y-2">
+                    {FAQS_DATA.filter((f) => faqCategoryFilter === 'all' || f.category === faqCategoryFilter).map((faq, idx) => (
+                      <div
+                        key={idx}
+                        className={`rounded-2xl border transition-all overflow-hidden ${
+                          openFaqIndex === idx
+                            ? 'bg-slate-950 border-amber-500/50 shadow-md'
+                            : 'bg-slate-950/60 border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setOpenFaqIndex(openFaqIndex === idx ? null : idx)}
+                          className="w-full p-3.5 text-left font-bold text-white text-xs flex items-center justify-between cursor-pointer"
+                        >
+                          <span className="flex items-center space-x-2">
+                            <Sparkles className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                            <span>{faq.q}</span>
+                          </span>
+                          <span className={`text-amber-400 transition-transform font-mono text-sm ${openFaqIndex === idx ? 'rotate-180' : ''}`}>
+                            ▼
+                          </span>
+                        </button>
+                        {openFaqIndex === idx && (
+                          <div className="px-4 pb-4 text-slate-300 text-[11px] border-t border-slate-800/80 pt-2.5 leading-relaxed bg-slate-900/50">
+                            {faq.a}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
             </div>
 
             {/* Modal Footer */}
-            <div className="bg-zinc-950 p-3 border-t border-zinc-800 flex justify-end shrink-0">
+            <div className="bg-slate-950 p-4 border-t border-slate-800 flex justify-between items-center shrink-0">
+              <span className="text-[11px] text-slate-400 font-mono">Recko India • 100% Verified Platform</span>
               <button
                 type="button"
                 onClick={() => setActiveModalPage(null)}
-                className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs px-4 py-1.5 rounded-lg transition-all cursor-pointer"
+                className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs px-5 py-2 rounded-xl transition-all cursor-pointer shadow-md"
               >
-                Close
+                Done / Close
               </button>
             </div>
 

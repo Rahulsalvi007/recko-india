@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Property } from '../types';
 import { openWhatsAppChat } from '../utils/whatsapp';
+import { makePhoneCall } from '../utils/phoneCall';
 
 interface PropertyDetailModalProps {
   property: Property | null;
@@ -32,6 +33,15 @@ interface PropertyDetailModalProps {
   onSelectSimilarProperty?: (p: Property) => void;
   onOpenChat?: (property: Property) => void;
 }
+
+const getSafeExternalUrl = (url?: string): string => {
+  if (!url) return '#';
+  const trimmed = url.trim();
+  if (trimmed.startsWith('https://') || trimmed.startsWith('http://')) {
+    return trimmed;
+  }
+  return '#';
+};
 
 export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
   property,
@@ -154,7 +164,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
                 <div className="flex flex-wrap items-center gap-3 pt-1">
                   {property.mapLink && (
                     <a
-                      href={property.mapLink}
+                      href={getSafeExternalUrl(property.mapLink)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-[11px] inline-flex items-center space-x-1 transition-all shadow-2xs"
@@ -166,7 +176,7 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
 
                   {property.locationScreenshot && (
                     <a
-                      href={property.locationScreenshot}
+                      href={getSafeExternalUrl(property.locationScreenshot)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="text-emerald-800 hover:text-emerald-900 font-bold underline text-[11px]"
@@ -372,13 +382,14 @@ export const PropertyDetailModal: React.FC<PropertyDetailModalProps> = ({
                   <span>WhatsApp Owner</span>
                 </button>
 
-                <a
-                  href={`tel:${property.ownerContact}`}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-2 rounded-xl flex items-center justify-center space-x-1 transition-colors"
+                <button
+                  type="button"
+                  onClick={() => makePhoneCall(property.ownerContact, property.ownerName)}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-2 rounded-xl flex items-center justify-center space-x-1 transition-colors cursor-pointer"
                 >
                   <Phone className="h-3.5 w-3.5 text-zinc-900" />
                   <span>Call Owner</span>
-                </a>
+                </button>
 
                 <button
                   onClick={() => setVisitRequested(true)}

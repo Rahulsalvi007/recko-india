@@ -61,6 +61,7 @@ export const CategoryHeader: React.FC<CategoryHeaderProps> = ({
 }) => {
   const [heroTab, setHeroTab] = useState<'properties' | 'vehicles'>(activeCategory === 'vehicle' ? 'vehicles' : 'properties');
   const [isListening, setIsListening] = useState(false);
+  const [selectedBudgetLabel, setSelectedBudgetLabel] = useState<string>('Any Budget');
 
   const handleStartVoiceSearch = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -137,7 +138,7 @@ export const CategoryHeader: React.FC<CategoryHeaderProps> = ({
   ];
 
   const handleBudgetChange = (val: string) => {
-    setBudgetLabel(val);
+    setSelectedBudgetLabel(val);
     if (val.includes('10,000')) setMaxBudget(10000);
     else if (val.includes('25,000')) setMaxBudget(25000);
     else if (val.includes('50,000')) setMaxBudget(50000);
@@ -183,10 +184,15 @@ export const CategoryHeader: React.FC<CategoryHeaderProps> = ({
           {/* Dynamic Background Image per Category (80% Opacity with Slow Motion Effect) */}
           <div className="absolute inset-0 pointer-events-none z-0 overflow-hidden">
             <img
-              key={getHeroBgImage(activeCategory, heroTab)}
+              key={`${activeCategory}-${heroTab}`}
               src={getHeroBgImage(activeCategory, heroTab)}
               alt={`${activeCategory} Category Background`}
               className="w-full h-full object-cover object-center animate-slow-motion transition-transform duration-1000 ease-out hover:scale-100"
+              referrerPolicy="no-referrer"
+              loading="lazy"
+              onError={(e) => {
+                (e.target as HTMLElement).style.display = 'none';
+              }}
             />
             {/* Soft Transparent Mask for Text Legibility while keeping image 80% visible */}
             <div className="absolute inset-0 bg-gradient-to-r from-slate-950/85 via-slate-950/40 to-transparent pointer-events-none" />

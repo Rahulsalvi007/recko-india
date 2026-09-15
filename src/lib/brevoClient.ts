@@ -4,6 +4,7 @@
  * and automatically falls back to direct Brevo Transactional Email REST API
  * if the server returns 404 or is unavailable.
  */
+import { getApiUrl } from '../utils/apiConfig';
 
 export interface SendOtpOptions {
   email: string;
@@ -331,7 +332,7 @@ export async function sendEmailOtpClient(options: SendOtpOptions): Promise<SendO
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 8000);
 
-    const res = await fetch('/api/auth/brevo/send-otp', {
+    const res = await fetch(getApiUrl('/api/auth/brevo/send-otp'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -407,7 +408,7 @@ export async function verifyEmailOtpClient(email: string, otp: string): Promise<
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-    const res = await fetch('/api/auth/brevo/verify-otp', {
+    const res = await fetch(getApiUrl('/api/auth/brevo/verify-otp'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

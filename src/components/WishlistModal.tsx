@@ -7,6 +7,7 @@ interface WishlistModalProps {
   onClose: () => void;
   onRemoveItem: (id: string) => void;
   onViewItem: (item: WishlistItem) => void;
+  onClearWishlist?: () => void;
 }
 
 export const WishlistModal: React.FC<WishlistModalProps> = ({
@@ -14,6 +15,7 @@ export const WishlistModal: React.FC<WishlistModalProps> = ({
   onClose,
   onRemoveItem,
   onViewItem,
+  onClearWishlist,
 }) => {
   return (
     <div className="fixed inset-0 z-50 bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-white overflow-y-auto w-full h-full min-h-screen">
@@ -37,6 +39,22 @@ export const WishlistModal: React.FC<WishlistModalProps> = ({
               <p className="text-xs text-slate-500 dark:text-zinc-400 font-semibold">{wishlist.length} saved places & listings</p>
             </div>
           </div>
+
+          {wishlist.length > 0 && onClearWishlist && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm('Clear all saved items from your wishlist?')) {
+                  onClearWishlist();
+                }
+              }}
+              className="flex items-center space-x-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 px-3.5 py-2 rounded-xl text-xs font-black border border-rose-200 dark:border-rose-800 transition-all cursor-pointer shadow-xs"
+              title="Clear all saved items"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Clear Wishlist</span>
+            </button>
+          )}
         </div>
 
         {/* Content */}

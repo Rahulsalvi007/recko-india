@@ -40,8 +40,10 @@ interface UserProfileModalProps {
   onTrackVehicle?: (vehicle: Vehicle) => void;
   onOpenBookingChat?: (booking: RentalBooking) => void;
   onCancelBooking?: (bookingId: string) => void;
+  onDeleteBooking?: (bookingId: string) => void;
   isAdminView?: boolean;
   onBlockUser?: (userEmail: string) => void;
+  onUpdateUser?: (updatedUser: any, oldData?: { name?: string; phone?: string; email?: string }) => void;
 }
 
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({
@@ -56,8 +58,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   onTrackVehicle,
   onOpenBookingChat,
   onCancelBooking,
+  onDeleteBooking,
   isAdminView,
-  onBlockUser
+  onBlockUser,
+  onUpdateUser
 }) => {
   const [activeTab, setActiveTab] = useState<'details' | 'rentals'>('details');
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -68,7 +72,20 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const [editPhone, setEditPhone] = useState(user?.phone || '');
   const [editPassword, setEditPassword] = useState('');
   const [editAddress, setEditAddress] = useState((user && 'address' in user && user.address) || (user && 'currentAddress' in user && user.currentAddress) || '');
+  const [editGovIdType, setEditGovIdType] = useState<'Aadhaar Card' | 'Passport' | 'Driving Licence' | 'Voter ID'>(((user as any)?.govIdType) || 'Aadhaar Card');
+  const [editGovIdNumber, setEditGovIdNumber] = useState((user as any)?.govIdNumber || '');
   const [updateMsg, setUpdateMsg] = useState('');
+
+  // Sync state when user prop updates
+  React.useEffect(() => {
+    if (user) {
+      setEditName(user.name || '');
+      setEditPhone(user.phone || '');
+      setEditAddress((user && 'address' in user && user.address) || (user && 'currentAddress' in user && user.currentAddress) || '');
+      setEditGovIdNumber((user as any)?.govIdNumber || '');
+      setEditGovIdType((user as any)?.govIdType || 'Aadhaar Card');
+    }
+  }, [user]);
 
   if (!isOpen || !user) return null;
 
@@ -92,12 +109,20 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     e.preventDefault();
     setUpdateMsg('');
 
+    const oldData = {
+      name: user.name,
+      phone: user.phone,
+      email: user.email
+    };
+
     const updatedUser = {
       ...user,
       name: editName.trim() || user.name,
       phone: editPhone.trim() || user.phone,
       address: editAddress.trim(),
       currentAddress: editAddress.trim(),
+      govIdNumber: editGovIdNumber.trim() || (user as any).govIdNumber,
+      govIdType: editGovIdType || (user as any).govIdType,
       ...(editPassword.trim() ? { password: editPassword.trim() } : {})
     };
 
@@ -110,7 +135,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       console.warn('Firebase user profile update fallback:', err);
     }
 
-    setUpdateMsg('✅ Personal details updated successfully in database!');
+    if (onUpdateUser) {
+      onUpdateUser(updatedUser, oldData);
+    }
+
+    setUpdateMsg('✅ Personal details updated & synchronized across all your bookings and rentals!');
     setIsEditing(false);
     setTimeout(() => setUpdateMsg(''), 3500);
   };
@@ -243,6 +272,31 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                           onChange={(e) => setEditAddress(e.target.value)}
                           placeholder="e.g. Flat 402, Sunshine Heights, Sector 62"
                           className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white font-medium outline-none focus:border-amber-400"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-400 mb-1">Government ID Type</label>
+                        <select
+                          value={editGovIdType}
+                          onChange={(e) => setEditGovIdType(e.target.value as any)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white font-medium outline-none focus:border-amber-400"
+                        >
+                          <option value="Aadhaar Card">Aadhaar Card</option>
+                          <option value="Passport">Passport</option>
+                          <option value="Driving Licence">Driving Licence</option>
+                          <option value="Voter ID">Voter ID</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-slate-400 mb-1">Government ID Number</label>
+                        <input
+                          type="text"
+                          value={editGovIdNumber}
+                          onChange={(e) => setEditGovIdNumber(e.target.value)}
+                          placeholder="e.g. 5432 1098 7654"
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl p-2.5 text-white font-mono font-medium outline-none focus:border-amber-400"
                         />
                       </div>
                     </div>
@@ -423,6 +477,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                         {/* Cancel Booking Button */}
                         {onCancelBooking && b.status !== 'Cancelled' && (
                           <button
+                            type="button"
                             onClick={() => {
                               if (confirm(`Are you sure you want to cancel booking #${b.id}?`)) {
                                 onCancelBooking(b.id);
@@ -431,6 +486,23 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                             className="bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:text-rose-300 font-extrabold text-xs px-3 py-2 rounded-xl border border-rose-200 dark:border-rose-800 transition-all cursor-pointer shrink-0"
                           >
                             Cancel
+                          </button>
+                        )}
+
+                        {/* Delete from History Button */}
+                        {onDeleteBooking && (b.status === 'Cancelled' || b.status === 'Rejected' || b.status === 'Declined') && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`Permanently remove booking #${b.id} from your history?`)) {
+                                onDeleteBooking(b.id);
+                              }
+                            }}
+                            className="bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:text-rose-300 font-extrabold text-xs px-3 py-2 rounded-xl border border-rose-200 dark:border-rose-800 transition-all cursor-pointer shrink-0 flex items-center space-x-1"
+                            title="Permanently delete from history"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            <span>Delete from History</span>
                           </button>
                         )}
                       </div>

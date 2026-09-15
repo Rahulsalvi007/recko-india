@@ -60,7 +60,8 @@ import {
   Restaurant,
   Library,
   WishlistItem,
-  AppNotification
+  AppNotification,
+  JuniorAdmin
 } from './types';
 import {
   INITIAL_PROPERTIES,
@@ -74,6 +75,10 @@ import {
   MOCK_CLOTHING_ITEMS,
   MOCK_SPORTS_TURFS
 } from './data/mockData';
+import { getCityCoordinates } from './utils/aiLocationEngine';
+import { formatINR } from './utils/financialCalculations';
+import { formatISTDateDisplay } from './utils/dateTimeUtils';
+import { sendOwnerBookingSms } from './utils/mobileNotificationService';
 import {
   subscribeCollection,
   saveDocument,
@@ -108,10 +113,44 @@ export default function App() {
   const [selectedCity, setSelectedCity] = useState<string>('');
   const [maxBudget, setMaxBudget] = useState<number>(250000);
 
-  // Helper for flexible user-entered city matching
-  const isCityMatch = (itemCity: string) => {
+  // Helper for flexible user-entered city matching with Indian city alias support
+  const isCityMatch = (itemCity?: string) => {
     if (!selectedCity || selectedCity.trim() === '' || selectedCity === 'All Cities') return true;
-    return itemCity.toLowerCase().includes(selectedCity.trim().toLowerCase());
+    if (!itemCity) return false;
+
+    const normalize = (str: string) =>
+      str.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+
+    const c1 = normalize(itemCity);
+    const c2 = normalize(selectedCity);
+
+    if (c1 === c2 || c1.includes(c2) || c2.includes(c1)) return true;
+
+    // Alias mapping for common Indian city names / variations
+    const aliasGroups: string[][] = [
+      ['bengaluru', 'bangalore'],
+      ['mumbai', 'bombay'],
+      ['delhi', 'new delhi', 'delhi ncr', 'ncr'],
+      ['kolkata', 'calcutta'],
+      ['chennai', 'madras'],
+      ['gurugram', 'gurgaon'],
+      ['hyderabad', 'secunderabad'],
+      ['prayagraj', 'allahabad'],
+      ['varanasi', 'banaras', 'kashi'],
+      ['pune', 'poona'],
+      ['udaipur', 'lake city']
+    ];
+
+    for (const group of aliasGroups) {
+      const matchC1 = group.some((alias) => c1.includes(alias));
+      const matchC2 = group.some((alias) => c2.includes(alias));
+      if (matchC1 && matchC2) return true;
+    }
+
+    // Token-based intersection (e.g. "Udaipur Rajasthan" matches "Udaipur")
+    const words1 = c1.split(' ').filter(w => w.length > 2);
+    const words2 = c2.split(' ').filter(w => w.length > 2);
+    return words1.some(w => words2.includes(w));
   };
   const [furnishingFilter, setFurnishingFilter] = useState<string>('ALL');
   const [selectedCollege, setSelectedCollege] = useState<string>('');
@@ -264,12 +303,16 @@ export default function App() {
   }, [bookings, currentUser]);
 
   // Filter notifications strictly for the active logged-in user or landlord (Zero leak to unauthenticated or other users)
+  // Filter notifications strictly for the active logged-in user or landlord (Zero leak to unauthenticated or other users)
   const activeUserNotifications = useMemo(() => {
     if (!currentUser && !loggedInLandlord) {
       return []; // Do not display notifications if not logged in
     }
 
     return notifications.filter((n) => {
+      let matchesUser = false;
+      let matchesLandlord = false;
+
       // 1. If Tenant / User is logged in
       if (currentUser) {
         const userEmail = currentUser.email?.toLowerCase().trim();
@@ -277,18 +320,14 @@ export default function App() {
 
         // Explicit user match
         if (n.userEmail || n.userId) {
-          const emailMatch = Boolean(n.userEmail && n.userEmail.toLowerCase().trim() === userEmail);
-          const idMatch = Boolean(n.userId && n.userId === userId);
-          return emailMatch || idMatch;
+          matchesUser = Boolean(
+            (n.userEmail && n.userEmail.toLowerCase().trim() === userEmail) ||
+            (n.userId && n.userId === userId)
+          );
+        } else if (!n.ownerId && !n.ownerEmail && n.recipientRole !== 'landlord') {
+          // Allow general user broadcast notifications
+          matchesUser = n.recipientRole === 'user' || n.recipientRole === 'all' || (!n.userEmail && !n.userId);
         }
-
-        // Exclude landlord-only alerts
-        if (n.ownerId || n.ownerEmail || n.recipientRole === 'landlord') {
-          return false;
-        }
-
-        // Allow general user broadcast notifications
-        return n.recipientRole === 'user' || n.recipientRole === 'all' || (!n.ownerId && !n.ownerEmail && !n.userEmail && !n.userId);
       }
 
       // 2. If Owner / Landlord is logged in
@@ -298,21 +337,17 @@ export default function App() {
 
         // Explicit landlord match
         if (n.ownerId || n.ownerEmail) {
-          const idMatch = Boolean(n.ownerId && n.ownerId === ownerId);
-          const emailMatch = Boolean(n.ownerEmail && n.ownerEmail.toLowerCase().trim() === ownerEmail);
-          return idMatch || emailMatch;
+          matchesLandlord = Boolean(
+            (n.ownerId && n.ownerId === ownerId) ||
+            (n.ownerEmail && n.ownerEmail.toLowerCase().trim() === ownerEmail)
+          );
+        } else if (!n.userEmail && !n.userId && n.recipientRole !== 'user') {
+          // Allow general landlord broadcast notifications
+          matchesLandlord = n.recipientRole === 'landlord' || n.recipientRole === 'all' || (!n.ownerId && !n.ownerEmail);
         }
-
-        // Exclude tenant-only alerts
-        if (n.userEmail || n.userId || n.recipientRole === 'user') {
-          return false;
-        }
-
-        // Allow general landlord broadcast notifications
-        return n.recipientRole === 'landlord' || n.recipientRole === 'all';
       }
 
-      return false;
+      return matchesUser || matchesLandlord;
     });
   }, [notifications, currentUser, loggedInLandlord]);
 
@@ -474,7 +509,7 @@ export default function App() {
               ...b,
               status: newStatus,
               ...(rejectionReason ? { rejectionReason, tokenPaymentStatus: 'Refunded' as const } : {}),
-              decisionDate: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+              decisionDate: formatISTDateDisplay(new Date())
             }
           : b
       );
@@ -488,7 +523,7 @@ export default function App() {
           ...target,
           status: newStatus,
           ...(rejectionReason ? { rejectionReason, tokenPaymentStatus: 'Refunded' } : {}),
-          decisionDate: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+          decisionDate: formatISTDateDisplay(new Date())
         }
       : { status: newStatus };
 
@@ -514,13 +549,28 @@ export default function App() {
     saveDocument('notifications', notif.id, notif);
   };
 
-  const handleCancelBooking = (id: string) => {
-    setBookings((prev) => {
-      const updated = prev.filter((b) => b.id !== id);
-      localStorage.setItem('renthub_bookings', JSON.stringify(updated));
-      return updated;
-    });
-    deleteDocument('bookings', id);
+  const handleCancelBooking = (id: string, reason?: string) => {
+    handleUpdateBookingStatus(id, 'Cancelled', reason || 'Cancelled by renter');
+  };
+
+  const handlePermanentDeleteBooking = async (id: string) => {
+    setBookings((prev) => prev.filter((b) => b.id !== id));
+    try {
+      await deleteDocument('bookings', id);
+    } catch (e) {
+      console.warn('Failed to delete booking from Firestore:', e);
+    }
+    try {
+      const saved = localStorage.getItem('renthub_bookings');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          localStorage.setItem('renthub_bookings', JSON.stringify(parsed.filter((b: any) => b.id !== id)));
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to update localStorage for deleted booking:', e);
+    }
   };
 
   // Helper to safely merge real-time Firestore snapshots with local state (prevents wiping un-synced local items)
@@ -667,28 +717,49 @@ export default function App() {
 
   const findAssetById = (id: string) => {
     const p = properties.find((x) => x.id === id);
-    if (p) return { item: p, category: 'Property', title: p.title, image: p.images?.[0] || '', location: p.location, city: p.city, priceDisplay: `₹${p.rentPerMonth?.toLocaleString('en-IN')}/mo` };
+    if (p) return { item: p, category: 'Property', title: p.title, image: p.images?.[0] || '', location: p.location, city: p.city, priceDisplay: `${formatINR(p.rentPerMonth || 0)}/mo` };
 
     const v = vehicles.find((x) => x.id === id);
-    if (v) return { item: v, category: 'Vehicle', title: v.title, image: v.images?.[0] || '', location: v.location, city: v.city, priceDisplay: `₹${v.pricePerDay?.toLocaleString('en-IN')}/day` };
+    if (v) {
+      const vPrice = v.rentPerDay || v.dailyPrice || v.pricePerDay || v.price || 0;
+      return { item: v, category: 'Vehicle', title: v.title, image: v.images?.[0] || '', location: v.location, city: v.city, priceDisplay: `${formatINR(vPrice)}/day` };
+    }
 
     const h = hotels.find((x) => x.id === id);
-    if (h) return { item: h, category: 'Hotel', title: h.title, image: h.images?.[0] || '', location: h.location, city: h.city, priceDisplay: `₹${h.rooms?.[0]?.pricePerNight?.toLocaleString('en-IN') || 2500}/night` };
+    if (h) {
+      const hPrice = h.pricePerNight || (h.rooms && h.rooms[0] && h.rooms[0].pricePerNight) || h.price || 0;
+      return { item: h, category: 'Hotel', title: h.title, image: h.images?.[0] || '', location: h.location, city: h.city, priceDisplay: `${formatINR(hPrice)}/night` };
+    }
 
     const r = restaurants.find((x) => x.id === id);
-    if (r) return { item: r, category: 'Restaurant', title: r.title, image: r.images?.[0] || '', location: r.location, city: r.city, priceDisplay: `₹${r.averageCostForTwo?.toLocaleString('en-IN')}/for two` };
+    if (r) {
+      const rPrice = r.averageCostForTwo || r.pricePerPerson || r.price || 0;
+      return { item: r, category: 'Restaurant', title: r.title, image: r.images?.[0] || '', location: r.location, city: r.city, priceDisplay: `${formatINR(rPrice)}/for two` };
+    }
 
     const l = libraries.find((x) => x.id === id);
-    if (l) return { item: l, category: 'Library', title: l.title, image: l.images?.[0] || '', location: l.location, city: l.city, priceDisplay: `₹${l.monthlyFee?.toLocaleString('en-IN') || 1200}/mo` };
+    if (l) {
+      const lPrice = l.monthlyFee || l.rentPerMonth || l.price || 0;
+      return { item: l, category: 'Library', title: l.title, image: l.images?.[0] || '', location: l.location, city: l.city, priceDisplay: `${formatINR(lPrice)}/mo` };
+    }
 
     const c = clothingItems.find((x) => x.id === id);
-    if (c) return { item: c, category: 'Clothing', title: c.title, image: c.images?.[0] || '', location: c.location, city: c.city, priceDisplay: `₹${c.rentPricePerDay?.toLocaleString('en-IN')}/day` };
+    if (c) {
+      const cPrice = c.rentPerDay || c.rentPricePerDay || c.price || 0;
+      return { item: c, category: 'Clothing', title: c.title, image: c.images?.[0] || '', location: c.location, city: c.city, priceDisplay: `${formatINR(cPrice)}/day` };
+    }
 
     const s = sportsTurfItems.find((x) => x.id === id);
-    if (s) return { item: s, category: 'Sports Turf', title: s.title, image: s.images?.[0] || '', location: s.location, city: s.city, priceDisplay: `₹${s.pricePerHour?.toLocaleString('en-IN')}/hr` };
+    if (s) {
+      const sPrice = s.rentPerHour || s.pricePerHour || s.price || 0;
+      return { item: s, category: 'Sports Turf', title: s.title, image: s.images?.[0] || '', location: s.location, city: s.city, priceDisplay: `${formatINR(sPrice)}/hr` };
+    }
 
     const g = generalItems.find((x) => x.id === id);
-    if (g) return { item: g, category: 'Appliance', title: g.title, image: g.images?.[0] || g.image || '', location: g.location, city: g.city, priceDisplay: `₹${g.rentPerMonth?.toLocaleString('en-IN')}/mo` };
+    if (g) {
+      const gPrice = g.rentPerMonth || g.rentPerDay || g.price || 0;
+      return { item: g, category: 'Appliance', title: g.title, image: g.images?.[0] || g.image || '', location: g.location, city: g.city, priceDisplay: `${formatINR(gPrice)}/mo` };
+    }
 
     return null;
   };
@@ -830,6 +901,42 @@ export default function App() {
     saveDocument('notifications', notif.id, notif);
   };
 
+  // Landlord Add Hotel Handler
+  const handleAddHotel = (newHotel: Hotel) => {
+    const taggedHotel: Hotel = {
+      ...newHotel,
+      ownerId: loggedInLandlord ? loggedInLandlord.id : (newHotel.ownerId || 'owner-verified'),
+      ownerName: loggedInLandlord ? loggedInLandlord.name : (newHotel.ownerName || 'Hotel Host'),
+      status: 'Approved'
+    };
+    setHotels((prev) => [taggedHotel, ...prev]);
+    saveDocument('hotels', taggedHotel.id, taggedHotel);
+  };
+
+  // Landlord Add Restaurant Handler
+  const handleAddRestaurant = (newRest: Restaurant) => {
+    const taggedRest: Restaurant = {
+      ...newRest,
+      ownerId: loggedInLandlord ? loggedInLandlord.id : (newRest.ownerId || 'owner-verified'),
+      ownerName: loggedInLandlord ? loggedInLandlord.name : (newRest.ownerName || 'Restaurant Host'),
+      status: 'Approved'
+    };
+    setRestaurants((prev) => [taggedRest, ...prev]);
+    saveDocument('restaurants', taggedRest.id, taggedRest);
+  };
+
+  // Landlord Add Library Handler
+  const handleAddLibrary = (newLib: Library) => {
+    const taggedLib: Library = {
+      ...newLib,
+      ownerId: loggedInLandlord ? loggedInLandlord.id : (newLib.ownerId || 'owner-verified'),
+      ownerName: loggedInLandlord ? loggedInLandlord.name : (newLib.ownerName || 'Library Host'),
+      status: 'Approved'
+    };
+    setLibraries((prev) => [taggedLib, ...prev]);
+    saveDocument('libraries', taggedLib.id, taggedLib);
+  };
+
   // Admin approval / rejection handlers
   const handleApproveLandlord = (id: string) => {
     setLandlords((prev) =>
@@ -880,6 +987,21 @@ export default function App() {
   const handleDeleteVehicle = (id: string) => {
     setVehicles((prev) => prev.filter((v) => v.id !== id));
     deleteDocument('vehicles', id);
+  };
+
+  const handleDeleteClothing = (id: string) => {
+    setClothingItems((prev) => prev.filter((c) => c.id !== id));
+    deleteDocument('clothing', id);
+  };
+
+  const handleDeleteSportsTurf = (id: string) => {
+    setSportsTurfItems((prev) => prev.filter((t) => t.id !== id));
+    deleteDocument('sports_turfs', id);
+  };
+
+  const handleDeleteGeneralItem = (id: string) => {
+    setGeneralItems((prev) => prev.filter((g) => g.id !== id));
+    deleteDocument('general_items', id);
   };
 
   // User Account Deletion Handler (with Email OTP Verification)
@@ -968,6 +1090,401 @@ export default function App() {
     setNotifications((prev) => [notif, ...prev]);
 
     alert('Owner / Landlord account and all associated listings have been permanently deleted.');
+  };
+
+  // Real-Time Global Landlord / Owner Profile Update Synchronizer
+  const handleUpdateLandlordProfile = async (
+    updatedLandlord: LandlordUser,
+    oldData?: { name?: string; phone?: string; email?: string; upiId?: string }
+  ) => {
+    // 1. Update Active Session State & LocalStorage
+    setLoggedInLandlord(updatedLandlord);
+    localStorage.setItem('renthub_logged_landlord', JSON.stringify(updatedLandlord));
+
+    // 2. Update Landlords Directory State & LocalStorage
+    setLandlords((prev) => {
+      const updated = prev.map((l) => (l.id === updatedLandlord.id ? updatedLandlord : l));
+      localStorage.setItem('renthub_landlords', JSON.stringify(updated));
+      localStorage.setItem('renthub_landlords_list', JSON.stringify(updated));
+      return updated;
+    });
+
+    // 3. Persist to Firestore
+    try {
+      await saveDocument('landlords', updatedLandlord.id, updatedLandlord);
+    } catch (err) {
+      console.warn('Firebase landlord sync error:', err);
+    }
+
+    const oldName = oldData?.name?.trim().toLowerCase();
+    const oldPhone = oldData?.phone?.replace(/\D/g, '');
+    const ownerId = updatedLandlord.id;
+
+    // Helper match for assets belonging to this owner
+    const isOwnerItem = (item: any) => {
+      if (item.ownerId && (item.ownerId === ownerId || item.ownerId === 'owner-verified')) return true;
+      if (oldPhone && item.ownerContact && item.ownerContact.replace(/\D/g, '') === oldPhone) return true;
+      if (oldName && item.ownerName && item.ownerName.trim().toLowerCase() === oldName) return true;
+      return false;
+    };
+
+    // 4. Cascading Sync to Properties
+    setProperties((prev) => {
+      const updated = prev.map((p) => {
+        if (!isOwnerItem(p)) return p;
+        const newP = {
+          ...p,
+          ownerName: updatedLandlord.name,
+          ownerContact: updatedLandlord.phone,
+          ownerUpiId: updatedLandlord.upiId || p.ownerUpiId,
+          ownerQrUrl: updatedLandlord.upiQrUrl || p.ownerQrUrl
+        };
+        try {
+          updateDocument('properties', p.id, {
+            ownerName: updatedLandlord.name,
+            ownerContact: updatedLandlord.phone,
+            ownerUpiId: updatedLandlord.upiId || p.ownerUpiId,
+            ownerQrUrl: updatedLandlord.upiQrUrl || p.ownerQrUrl
+          });
+        } catch (e) {
+          // ignore
+        }
+        return newP;
+      });
+      localStorage.setItem('renthub_properties', JSON.stringify(updated));
+      return updated;
+    });
+
+    // 5. Cascading Sync to Vehicles
+    setVehicles((prev) => {
+      const updated = prev.map((v) => {
+        if (!isOwnerItem(v)) return v;
+        const newV = {
+          ...v,
+          ownerName: updatedLandlord.name,
+          ownerContact: updatedLandlord.phone,
+          ownerUpiId: updatedLandlord.upiId || (v as any).ownerUpiId,
+          ownerQrUrl: updatedLandlord.upiQrUrl || (v as any).ownerQrUrl
+        };
+        try {
+          updateDocument('vehicles', v.id, {
+            ownerName: updatedLandlord.name,
+            ownerContact: updatedLandlord.phone
+          });
+        } catch (e) {
+          // ignore
+        }
+        return newV;
+      });
+      localStorage.setItem('renthub_vehicles', JSON.stringify(updated));
+      return updated;
+    });
+
+    // 6. Cascading Sync to Clothing Items
+    setClothingItems((prev) => {
+      const updated = prev.map((c) => {
+        if (!isOwnerItem(c)) return c;
+        const newC = {
+          ...c,
+          ownerName: updatedLandlord.name,
+          ownerContact: updatedLandlord.phone,
+          ownerUpiId: updatedLandlord.upiId || (c as any).ownerUpiId,
+          ownerQrUrl: updatedLandlord.upiQrUrl || (c as any).ownerQrUrl
+        };
+        try {
+          updateDocument('clothing', c.id, {
+            ownerName: updatedLandlord.name,
+            ownerContact: updatedLandlord.phone
+          });
+        } catch (e) {
+          // ignore
+        }
+        return newC;
+      });
+      localStorage.setItem('renthub_clothing', JSON.stringify(updated));
+      return updated;
+    });
+
+    // 7. Cascading Sync to Sports Turfs
+    setSportsTurfItems((prev) => {
+      const updated = prev.map((t) => {
+        if (!isOwnerItem(t)) return t;
+        const newT = {
+          ...t,
+          ownerName: updatedLandlord.name,
+          ownerContact: updatedLandlord.phone,
+          ownerUpiId: updatedLandlord.upiId || (t as any).ownerUpiId,
+          ownerQrUrl: updatedLandlord.upiQrUrl || (t as any).ownerQrUrl
+        };
+        try {
+          updateDocument('sports_turfs', t.id, {
+            ownerName: updatedLandlord.name,
+            ownerContact: updatedLandlord.phone
+          });
+        } catch (e) {
+          // ignore
+        }
+        return newT;
+      });
+      localStorage.setItem('renthub_sports', JSON.stringify(updated));
+      return updated;
+    });
+
+    // 8. Cascading Sync to General Items
+    setGeneralItems((prev) => {
+      const updated = prev.map((g) => {
+        if (!isOwnerItem(g)) return g;
+        const newG = {
+          ...g,
+          ownerName: updatedLandlord.name,
+          ownerContact: updatedLandlord.phone,
+          ownerUpiId: updatedLandlord.upiId || (g as any).ownerUpiId,
+          ownerQrUrl: updatedLandlord.upiQrUrl || (g as any).ownerQrUrl
+        };
+        try {
+          updateDocument('general_items', g.id, {
+            ownerName: updatedLandlord.name,
+            ownerContact: updatedLandlord.phone
+          });
+        } catch (e) {
+          // ignore
+        }
+        return newG;
+      });
+      localStorage.setItem('renthub_general_items', JSON.stringify(updated));
+      return updated;
+    });
+
+    // 9. Cascading Sync to Hotels, Restaurants, Libraries
+    setHotels((prev) => {
+      const updated = prev.map((h) => {
+        if (!isOwnerItem(h)) return h;
+        return {
+          ...h,
+          ownerName: updatedLandlord.name,
+          ownerContact: updatedLandlord.phone
+        };
+      });
+      localStorage.setItem('renthub_hotels', JSON.stringify(updated));
+      return updated;
+    });
+
+    setRestaurants((prev) => {
+      const updated = prev.map((r) => {
+        if (!isOwnerItem(r)) return r;
+        return {
+          ...r,
+          ownerName: updatedLandlord.name,
+          ownerContact: updatedLandlord.phone
+        };
+      });
+      localStorage.setItem('renthub_restaurants', JSON.stringify(updated));
+      return updated;
+    });
+
+    setLibraries((prev) => {
+      const updated = prev.map((l) => {
+        if (!isOwnerItem(l)) return l;
+        return {
+          ...l,
+          ownerName: updatedLandlord.name,
+          ownerContact: updatedLandlord.phone
+        };
+      });
+      localStorage.setItem('renthub_libraries', JSON.stringify(updated));
+      return updated;
+    });
+
+    // 10. Cascading Sync to Bookings (where landlord is owner)
+    setBookings((prev) => {
+      const updated = prev.map((b) => {
+        if (!isOwnerItem(b)) return b;
+        const newB = {
+          ...b,
+          ownerName: updatedLandlord.name,
+          ownerContact: updatedLandlord.phone,
+          ownerUpiId: updatedLandlord.upiId || b.ownerUpiId
+        };
+        try {
+          updateDocument('bookings', b.id, {
+            ownerName: updatedLandlord.name,
+            ownerContact: updatedLandlord.phone,
+            ownerUpiId: updatedLandlord.upiId || b.ownerUpiId
+          });
+        } catch (e) {
+          // ignore
+        }
+        return newB;
+      });
+      localStorage.setItem('renthub_bookings', JSON.stringify(updated));
+      return updated;
+    });
+
+    // 11. Add system notification
+    const syncNotif: AppNotification = {
+      id: `notif-sync-landlord-${Date.now()}`,
+      title: 'Owner Profile Synced Everywhere',
+      message: `Your updated profile name (${updatedLandlord.name}), mobile (${updatedLandlord.phone}), and UPI (${updatedLandlord.upiId || 'Standard'}) have been synchronized across all your listings and bookings.`,
+      timestamp: 'Just now',
+      read: false,
+      type: 'system',
+      ownerId: updatedLandlord.id,
+      ownerEmail: updatedLandlord.email,
+      recipientRole: 'landlord'
+    };
+    setNotifications((prev) => [syncNotif, ...prev]);
+  };
+
+  // Real-Time Global User / Tenant Profile Update Synchronizer
+  const handleUpdateUserProfile = async (
+    updatedUser: UserProfile,
+    oldData?: { name?: string; phone?: string; email?: string }
+  ) => {
+    // 1. Update Active Session State & LocalStorage
+    setCurrentUser(updatedUser);
+    localStorage.setItem('renthub_user', JSON.stringify(updatedUser));
+
+    // 2. Update Registered Users List in LocalStorage
+    try {
+      const stored = localStorage.getItem('renthub_users_list');
+      if (stored) {
+        const list = JSON.parse(stored);
+        if (Array.isArray(list)) {
+          const updatedList = list.map((u: any) => {
+            if (
+              (u.id && (updatedUser as any).id && u.id === (updatedUser as any).id) ||
+              (u.email && u.email.toLowerCase().trim() === (oldData?.email || updatedUser.email)?.toLowerCase().trim())
+            ) {
+              return { ...u, ...updatedUser };
+            }
+            return u;
+          });
+          localStorage.setItem('renthub_users_list', JSON.stringify(updatedList));
+        }
+      }
+    } catch (err) {
+      console.warn('Failed to update renthub_users_list:', err);
+    }
+
+    // 3. Persist to Firestore
+    try {
+      if ((updatedUser as any).id) {
+        await saveDocument('users', (updatedUser as any).id, updatedUser);
+      }
+    } catch (err) {
+      console.warn('Firebase user sync error:', err);
+    }
+
+    const oldName = oldData?.name?.trim().toLowerCase();
+    const oldPhone = oldData?.phone?.replace(/\D/g, '');
+    const oldEmail = oldData?.email?.trim().toLowerCase();
+    const userId = (updatedUser as any).id;
+
+    const isUserBooking = (b: RentalBooking) => {
+      if (userId && (b as any).userId && (b as any).userId === userId) return true;
+      if (oldEmail && b.userEmail && b.userEmail.toLowerCase().trim() === oldEmail) return true;
+      if (oldPhone && b.userPhone && b.userPhone.replace(/\D/g, '') === oldPhone) return true;
+      if (oldName && b.userName && b.userName.trim().toLowerCase() === oldName) return true;
+      return false;
+    };
+
+    // 4. Cascading Sync to Bookings
+    setBookings((prev) => {
+      const updated = prev.map((b) => {
+        if (!isUserBooking(b)) return b;
+        const newB = {
+          ...b,
+          userName: updatedUser.name,
+          userPhone: updatedUser.phone,
+          userEmail: updatedUser.email,
+          currentAddress: updatedUser.address || (updatedUser as any).currentAddress || b.currentAddress,
+          govIdType: (updatedUser as any).govIdType || b.govIdType,
+          govIdNumber: (updatedUser as any).govIdNumber || b.govIdNumber
+        };
+        try {
+          updateDocument('bookings', b.id, {
+            userName: updatedUser.name,
+            userPhone: updatedUser.phone,
+            userEmail: updatedUser.email,
+            currentAddress: newB.currentAddress,
+            govIdType: newB.govIdType,
+            govIdNumber: newB.govIdNumber
+          });
+        } catch (e) {
+          // ignore
+        }
+        return newB;
+      });
+      localStorage.setItem('renthub_bookings', JSON.stringify(updated));
+      return updated;
+    });
+
+    // 5. Cascading Sync to Roommate Profiles
+    setRoommates((prev) => {
+      const updated = prev.map((rm) => {
+        const matches =
+          (userId && rm.id === userId) ||
+          (oldPhone && rm.phone && rm.phone.replace(/\D/g, '') === oldPhone) ||
+          (oldName && rm.name && rm.name.trim().toLowerCase() === oldName);
+        if (!matches) return rm;
+        const newRm = {
+          ...rm,
+          name: updatedUser.name,
+          phone: updatedUser.phone,
+          avatar: updatedUser.avatar || rm.avatar
+        };
+        try {
+          updateDocument('roommates', rm.id, {
+            name: updatedUser.name,
+            phone: updatedUser.phone
+          });
+        } catch (e) {
+          // ignore
+        }
+        return newRm;
+      });
+      return updated;
+    });
+
+    // 6. Cascading Sync to Feedbacks in LocalStorage
+    try {
+      const storedFb = localStorage.getItem('renthub_feedbacks_list');
+      if (storedFb) {
+        const fbList = JSON.parse(storedFb);
+        if (Array.isArray(fbList)) {
+          const updatedFb = fbList.map((fb: any) => {
+            if (
+              (oldEmail && fb.userEmail?.toLowerCase().trim() === oldEmail) ||
+              (oldName && fb.userName?.toLowerCase().trim() === oldName)
+            ) {
+              return {
+                ...fb,
+                userName: updatedUser.name,
+                userEmail: updatedUser.email
+              };
+            }
+            return fb;
+          });
+          localStorage.setItem('renthub_feedbacks_list', JSON.stringify(updatedFb));
+        }
+      }
+    } catch (err) {
+      console.warn('Feedback sync error:', err);
+    }
+
+    // 7. Add confirmation notification
+    const syncNotif: AppNotification = {
+      id: `notif-sync-user-${Date.now()}`,
+      title: 'Profile Updated Everywhere',
+      message: `Your name (${updatedUser.name}), mobile (${updatedUser.phone}), and details have been synchronized across all your bookings, active rentals, and roommate listings.`,
+      timestamp: 'Just now',
+      read: false,
+      type: 'system',
+      userId: userId || updatedUser.email,
+      userEmail: updatedUser.email,
+      recipientRole: 'user'
+    };
+    setNotifications((prev) => [syncNotif, ...prev]);
   };
 
   // AI Fake & Duplicate Image Removal & Owner Notification Dispatcher
@@ -1141,6 +1658,68 @@ export default function App() {
     saveDocument('notifications', newNotif.id, newNotif);
   };
 
+  // Centralized Universal Booking Dispatcher
+  // Handles React state, Firestore persistence, dual-session notifications, real-time SMS to owner, and receipt popup
+  const handleUniversalBookingCreated = (newBooking: RentalBooking) => {
+    // 1. Add to bookings state & Firestore
+    setBookings((prev) => [newBooking, ...prev]);
+    saveDocument('bookings', newBooking.id, newBooking);
+
+    // 2. Add renter notification
+    const renterNotif: AppNotification = {
+      id: `notif-renter-${Date.now()}`,
+      title: `Booking Request Confirmed: ${newBooking.itemTitle}`,
+      message: `Your booking request & details have been sent to host ${newBooking.ownerName || 'host'}. Awaiting confirmation!`,
+      timestamp: 'Just now',
+      read: false,
+      type: 'booking',
+      userEmail: newBooking.userEmail,
+      userId: currentUser?.id || newBooking.userEmail,
+      recipientRole: 'user'
+    };
+    setNotifications((prev) => [renterNotif, ...prev]);
+    saveDocument('notifications', renterNotif.id, renterNotif);
+
+    // 3. Add owner notification (only visible to that owner)
+    if (newBooking.ownerId) {
+      const hostNotif: AppNotification = {
+        id: `notif-host-${Date.now()}`,
+        title: `New Booking Request: ${newBooking.itemTitle}`,
+        message: `New booking request received from ${newBooking.userName} (+91 ${newBooking.userPhone}). Move-In: ${newBooking.startDate || 'Immediate'}. Action required in Owner Dashboard.`,
+        timestamp: 'Just now',
+        read: false,
+        type: 'booking',
+        ownerId: newBooking.ownerId,
+        recipientRole: 'landlord'
+      };
+      setNotifications((prev) => [hostNotif, ...prev]);
+      saveDocument('notifications', hostNotif.id, hostNotif);
+    }
+
+    // 4. Automatically dispatch real-time SMS to owner's mobile number
+    sendOwnerBookingSms({
+      ownerName: newBooking.ownerName,
+      ownerPhone: newBooking.ownerContact,
+      userName: newBooking.userName,
+      userPhone: newBooking.userPhone,
+      userEmail: newBooking.userEmail,
+      itemTitle: newBooking.itemTitle,
+      bookingId: newBooking.id,
+      startDate: newBooking.startDate,
+      duration: newBooking.rentalDurationType || (newBooking.daysCount ? `${newBooking.daysCount} Days` : undefined),
+      rentAmount: newBooking.monthlyRent || newBooking.unitPrice || newBooking.totalPrice,
+      tokenPaidAmount: newBooking.tokenPaidAmount,
+      category: newBooking.type
+    }).then((smsRes) => {
+      console.log('📲 Automatic SMS Alert Dispatched to Owner:', smsRes);
+    }).catch((err) => {
+      console.error('Failed to dispatch owner SMS:', err);
+    });
+
+    // 5. Open receipt modal
+    setActiveBookingReceipt(newBooking);
+  };
+
   // Confirm Hotel Room Booking
   const handleConfirmHotelBooking = (details: {
     hotel: Hotel;
@@ -1179,25 +1758,8 @@ export default function App() {
       guestsCount: details.guestsCount
     };
 
-    setBookings((prev) => [newBooking, ...prev]);
-    saveDocument('bookings', newBooking.id, newBooking);
-
-    const notif: AppNotification = {
-      id: `notif-${Date.now()}`,
-      title: `Hotel Booking Request Dispatched: ${details.hotel.title}`,
-      message: `Your booking request for ${details.hotel.title} (${details.selectedRoom.roomType}) has been sent to the hotel manager. Awaiting confirmation.`,
-      timestamp: 'Just now',
-      read: false,
-      type: 'booking',
-      userEmail: currentUser.email,
-      userId: (currentUser as any).id || currentUser.email,
-      recipientRole: 'user'
-    };
-    setNotifications((prev) => [notif, ...prev]);
-    saveDocument('notifications', notif.id, notif);
-
+    handleUniversalBookingCreated(newBooking);
     setSelectedHotel(null);
-    setActiveBookingReceipt(newBooking);
   };
 
   // Confirm Restaurant Table Reservation
@@ -1237,25 +1799,8 @@ export default function App() {
       guestsCount: details.guestsCount
     };
 
-    setBookings((prev) => [newBooking, ...prev]);
-    saveDocument('bookings', newBooking.id, newBooking);
-
-    const notif: AppNotification = {
-      id: `notif-${Date.now()}`,
-      title: `Table Reservation Request Sent: ${details.restaurant.title}`,
-      message: `Your table reservation for ${details.restaurant.title} has been sent to the restaurant host.`,
-      timestamp: 'Just now',
-      read: false,
-      type: 'booking',
-      userEmail: currentUser.email,
-      userId: (currentUser as any).id || currentUser.email,
-      recipientRole: 'user'
-    };
-    setNotifications((prev) => [notif, ...prev]);
-    saveDocument('notifications', notif.id, notif);
-
+    handleUniversalBookingCreated(newBooking);
     setSelectedRestaurant(null);
-    setActiveBookingReceipt(newBooking);
   };
 
   // Confirm Library Pass Booking
@@ -1295,25 +1840,8 @@ export default function App() {
       qrCodePass: details.qrCodePass
     };
 
-    setBookings((prev) => [newBooking, ...prev]);
-    saveDocument('bookings', newBooking.id, newBooking);
-
-    const notif: AppNotification = {
-      id: `notif-${Date.now()}`,
-      title: `Library Pass Requested: ${details.library.title}`,
-      message: `Your library pass request (${details.passType}) has been sent to the administrator.`,
-      timestamp: 'Just now',
-      read: false,
-      type: 'booking',
-      userEmail: currentUser.email,
-      userId: (currentUser as any).id || currentUser.email,
-      recipientRole: 'user'
-    };
-    setNotifications((prev) => [notif, ...prev]);
-    saveDocument('notifications', notif.id, notif);
-
+    handleUniversalBookingCreated(newBooking);
     setSelectedLibrary(null);
-    setActiveBookingReceipt(newBooking);
   };
 
   // Confirm Property Booking Request
@@ -1606,13 +2134,14 @@ export default function App() {
   });
 
   return (
-    <div
-      className={`min-h-screen font-sans flex flex-col antialiased transition-colors duration-300 pb-16 lg:pb-0 ${
-        currentTheme === 'dark'
-          ? 'bg-zinc-950 text-zinc-100 selection:bg-zinc-100 selection:text-zinc-950'
-          : 'bg-zinc-50 text-zinc-950 selection:bg-zinc-900 selection:text-white'
-      }`}
-    >
+    <>
+      <div
+        className={`min-h-screen font-sans flex flex-col antialiased transition-colors duration-300 pb-16 lg:pb-0 ${
+          currentTheme === 'dark'
+            ? 'bg-zinc-950 text-zinc-100 selection:bg-zinc-100 selection:text-zinc-950'
+            : 'bg-zinc-50 text-zinc-950 selection:bg-zinc-900 selection:text-white'
+        }`}
+      >
       
       {/* Top Navbar */}
       <Navbar
@@ -1679,7 +2208,7 @@ export default function App() {
             onOpenChat={(b) => setActiveBookingChat({ booking: b, role: 'renter' })}
             onOpenVehicleInspection={(b, mode) => setActiveVehicleInspection({ booking: b, mode })}
             onCancelBooking={handleCancelBooking}
-            onDeleteBooking={handleCancelBooking}
+            onDeleteBooking={handlePermanentDeleteBooking}
             onNavigateToRentStore={() => setActiveMode('rent')}
           />
         </main>
@@ -2326,6 +2855,9 @@ export default function App() {
         onAddClothing={handleAddClothing}
         onAddSportsTurf={handleAddSportsTurf}
         onAddGeneralItem={handleAddGeneralItem}
+        onAddHotel={handleAddHotel}
+        onAddRestaurant={handleAddRestaurant}
+        onAddLibrary={handleAddLibrary}
         loggedInLandlord={loggedInLandlord}
       />
 
@@ -2384,7 +2916,8 @@ export default function App() {
         currentUserEmail={currentUser?.email}
         currentUserName={currentUser?.name}
         onBookingConfirmed={(booking) => {
-          setBookings((prev) => [booking, ...prev]);
+          handleUniversalBookingCreated(booking);
+          setReservingRestaurant(null);
         }}
       />
       {/* Dedicated Sports Turf Ground Slot Booking Modal */}
@@ -2395,7 +2928,8 @@ export default function App() {
         currentUserEmail={currentUser?.email}
         currentUserName={currentUser?.name}
         onBookingConfirmed={(booking) => {
-          setBookings((prev) => [booking, ...prev]);
+          handleUniversalBookingCreated(booking);
+          setBookingSportsTurf(null);
         }}
       />
 
@@ -2429,15 +2963,33 @@ export default function App() {
             deleteDocument('saved_items', `${userKey}_${id}`);
             deleteDocument('saved_items', id);
           }}
+          onClearWishlist={() => {
+            const userKey = currentUser ? currentUser.email.toLowerCase().trim() : 'guest';
+            const allTargetIds = new Set(activeUserWishlist.flatMap((w) => [w.id, w.itemId, `${userKey}_${w.itemId}`, `${userKey}_${w.id}`]).filter(Boolean));
+            setWishlist((prev) => prev.filter((w) => !allTargetIds.has(w.id) && !allTargetIds.has(w.itemId)));
+            setSavedIds((prev) => prev.filter((i) => !allTargetIds.has(i)));
+            for (const item of activeUserWishlist) {
+              deleteDocument('saved_items', `${userKey}_${item.id}`);
+              deleteDocument('saved_items', item.id);
+              if (item.itemId) {
+                deleteDocument('saved_items', `${userKey}_${item.itemId}`);
+                deleteDocument('saved_items', item.itemId);
+              }
+            }
+            try {
+              localStorage.removeItem('renthub_saved_items');
+            } catch {}
+          }}
           onViewItem={(item) => {
             setIsSavedModalOpen(false);
-            if (item.category === 'Hotel') {
+            const cat = String(item.category || '').toLowerCase();
+            if (cat === 'hotel') {
               const h = hotels.find((x) => x.id === item.id);
               if (h) setSelectedHotel(h);
-            } else if (item.category === 'Restaurant') {
+            } else if (cat === 'restaurant') {
               const r = restaurants.find((x) => x.id === item.id);
               if (r) setSelectedRestaurant(r);
-            } else if (item.category === 'Library') {
+            } else if (cat === 'library') {
               const l = libraries.find((x) => x.id === item.id);
               if (l) setSelectedLibrary(l);
             } else {
@@ -2476,6 +3028,9 @@ export default function App() {
         }}
         properties={properties}
         vehicles={vehicles}
+        clothingItems={clothingItems}
+        sportsTurfs={sportsTurfItems}
+        generalItems={generalItems}
         bookings={bookings}
         onOpenAddListing={() => {
           if (loggedInLandlord && loggedInLandlord.status === 'Approved') {
@@ -2490,8 +3045,17 @@ export default function App() {
         onEditVehicle={(v) => handleOpenEdit(v, 'vehicle')}
         onDeleteProperty={handleDeleteProperty}
         onDeleteVehicle={handleDeleteVehicle}
+        onDeleteClothing={handleDeleteClothing}
+        onDeleteSportsTurf={handleDeleteSportsTurf}
+        onDeleteGeneralItem={handleDeleteGeneralItem}
+        onDeleteBooking={handlePermanentDeleteBooking}
         onTrackVehicleGPS={(b) => {
-          const veh = vehicles.find((v) => v.id === b.itemId) || {
+          const existingVeh = vehicles.find((v) => v.id === b.itemId);
+          const bookingCity = (b as any).city || 'Jaipur';
+          const bookingLocation = (b as any).location || 'City Area';
+          const coords = getCityCoordinates(bookingCity, bookingLocation);
+
+          const veh = existingVeh || {
             id: b.itemId,
             title: b.itemTitle,
             vehicleType: 'Car',
@@ -2501,13 +3065,13 @@ export default function App() {
             rentPerDay: b.totalPrice || 1500,
             rentPerHour: 150,
             deposit: 2000,
-            location: 'Live GPS Telematics',
-            city: 'Udaipur',
+            location: bookingLocation,
+            city: bookingCity,
             images: [b.itemImage || 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?auto=format&fit=crop&w=800&q=80'],
             fuelType: 'Petrol',
             isGPSAvailable: true,
-            currentLat: 24.5854,
-            currentLng: 73.7125,
+            currentLat: coords.lat,
+            currentLng: coords.lng,
             speedKmh: 45,
             fuelLevelPercent: 88,
             licensePlate: 'RJ 27 AB 1234'
@@ -2516,6 +3080,7 @@ export default function App() {
         }}
         onOpenBookingChat={(booking) => setActiveBookingChat({ booking, role: 'owner' })}
         onDeleteLandlordAccount={handleDeleteLandlordAccount}
+        onUpdateLandlord={handleUpdateLandlordProfile}
       />
 
       {/* 5-Step Booking Request & Verification Modal */}
@@ -2528,42 +3093,13 @@ export default function App() {
         item={bookingRequestItem}
         tokenAmount={tokenAmount}
         onCompleteBooking={(newBooking) => {
-          setBookings((prev) => [newBooking, ...prev]);
-          saveDocument('bookings', newBooking.id, newBooking);
-
-          // 1. Add dispatched notification for tenant (only visible to this tenant)
-          const renterNotif: AppNotification = {
-            id: `notif-renter-${Date.now()}`,
-            title: `Booking Request Dispatched: ${newBooking.itemTitle}`,
-            message: `Your booking request & tenant KYC have been sent to owner ${newBooking.ownerName || 'host'}. Awaiting owner approval!`,
-            timestamp: 'Just now',
-            read: false,
-            type: 'booking',
-            userEmail: newBooking.userEmail,
-            userId: currentUser?.id || newBooking.userEmail,
-            recipientRole: 'user'
-          };
-          setNotifications((prev) => [renterNotif, ...prev]);
-          saveDocument('notifications', renterNotif.id, renterNotif);
-
-          // 2. Add owner notification (only visible to that owner)
-          if (newBooking.ownerId) {
-            const hostNotif: AppNotification = {
-              id: `notif-host-${Date.now()}`,
-              title: `New Tenant Booking: ${newBooking.itemTitle}`,
-              message: `New booking request received from ${newBooking.userName} (${newBooking.userEmail || newBooking.userPhone}). Move-In: ${newBooking.startDate || 'Immediate'}. Action required in Owner Dashboard.`,
-              timestamp: 'Just now',
-              read: false,
-              type: 'booking',
-              ownerId: newBooking.ownerId,
-              recipientRole: 'landlord'
-            };
-            setNotifications((prev) => [hostNotif, ...prev]);
-            saveDocument('notifications', hostNotif.id, hostNotif);
-          }
+          handleUniversalBookingCreated(newBooking);
         }}
         onNavigateToMyBookings={() => {
           setActiveMode('bookings');
+        }}
+        onOpenReceiptModal={(booking) => {
+          setActiveBookingReceipt(booking);
         }}
       />
 
@@ -2579,6 +3115,7 @@ export default function App() {
       <NearbyRadarModal
         isOpen={isRadarModalOpen}
         onClose={() => setIsRadarModalOpen(false)}
+        initialCity={selectedCity}
         availableProperties={properties}
         availableVehicles={vehicles}
         availableClothing={clothingItems}
@@ -2617,6 +3154,8 @@ export default function App() {
         vehicles={vehicles}
         onOpenBookingChat={(booking) => setActiveBookingChat({ booking, role: 'renter' })}
         onCancelBooking={handleCancelBooking}
+        onDeleteBooking={handlePermanentDeleteBooking}
+        onUpdateUser={handleUpdateUserProfile}
       />
 
       {/* General Item Detail Modal */}
@@ -2645,6 +3184,10 @@ export default function App() {
         generalItems={generalItems}
         onDeleteProperty={handleDeleteProperty}
         onDeleteVehicle={handleDeleteVehicle}
+        onDeleteClothing={handleDeleteClothing}
+        onDeleteSportsTurf={handleDeleteSportsTurf}
+        onDeleteGeneralItem={handleDeleteGeneralItem}
+        onDeleteBooking={handlePermanentDeleteBooking}
         bookings={bookings}
         onUpdateBookingStatus={handleUpdateBookingStatus}
         tokenAmount={tokenAmount}
@@ -2734,15 +3277,16 @@ export default function App() {
       {/* 3. Mobile Glassmorphism Quick-Action Floating Navigation Dock */}
       <BottomNavDock
         onOpenAIModal={() => setIsAIModalOpen(true)}
-        onOpenRadar={() => setIsRadarOpen(true)}
-        onOpenWishlist={() => setIsWishlistOpen(true)}
+        onOpenRadar={() => setIsRadarModalOpen(true)}
+        onOpenWishlist={() => setIsSavedModalOpen(true)}
         onOpenListProperty={() => {
-          if (!loggedInLandlord) setIsLandlordAuthOpen(true);
-          else setIsListingModalOpen(true);
+          if (!loggedInLandlord) setIsLandlordAuthModalOpen(true);
+          else setIsLandlordModalOpen(true);
         }}
         wishlistCount={wishlist.length}
       />
 
     </div>
+    </>
   );
 }

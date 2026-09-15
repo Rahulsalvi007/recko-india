@@ -1,8 +1,35 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Disallow unauthenticated public access to administrative credentials and internal system configs
+    match /system_config/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Public catalog collections - open reading for renters
+    match /properties/{id} { allow read: if true; allow write: if true; }
+    match /vehicles/{id} { allow read: if true; allow write: if true; }
+    match /hotels/{id} { allow read: if true; allow write: if true; }
+    match /restaurants/{id} { allow read: if true; allow write: if true; }
+    match /libraries/{id} { allow read: if true; allow write: if true; }
+    match /clothing/{id} { allow read: if true; allow write: if true; }
+    match /sports_turfs/{id} { allow read: if true; allow write: if true; }
+    match /general_items/{id} { allow read: if true; allow write: if true; }
+    match /roommates/{id} { allow read: if true; allow write: if true; }
+    match /feedbacks/{id} { allow read: if true; allow write: if true; }
+
+    // Operational collections
+    match /bookings/{id} { allow read, write: if true; }
+    match /saved_items/{id} { allow read, write: if true; }
+    match /notifications/{id} { allow read, write: if true; }
+    match /users/{id} { allow read, write: if true; }
+    match /landlords/{id} { allow read, write: if true; }
+    match /reports/{id} { allow read, write: if true; }
+    match /junior_admins/{id} { allow read, write: if true; }
+
+    // Default fallback: requires authentication
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if request.auth != null;
     }
   }
 }

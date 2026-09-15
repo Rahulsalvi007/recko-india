@@ -33,9 +33,21 @@ import {
   Wallet,
   Zap,
   Printer,
-  Info
+  Info,
+  MessageSquare
 } from 'lucide-react';
 import { MainCategory, RentalBooking, UserProfile } from '../types';
+import { openRazorpayCheckout } from '../utils/razorpay';
+import { getAdminPaymentConfig } from '../utils/adminPaymentStore';
+import { formatINR, calculateTransparentCostBreakdown, safeRoundCurrency } from '../utils/financialCalculations';
+import { getISTDateString, getISTTimestamp, validateBookingDateRange, formatISTDateDisplay } from '../utils/dateTimeUtils';
+import {
+  sendOwnerBookingSms,
+  getOwnerWhatsAppAlertUrl,
+  getOwnerSmsDeepLinkUrl,
+  formatOwnerBookingSmsText,
+  SmsDispatchResult
+} from '../utils/mobileNotificationService';
 
 interface BookingRequestModalProps {
   isOpen: boolean;
@@ -59,11 +71,44 @@ interface BookingRequestModalProps {
     roomType?: string;
     passType?: string;
     isAvailable?: boolean;
+    fullAddress?: string;
+    subType?: string;
+    furnishing?: string;
+    availableFrom?: string;
+    amenities?: string[];
+    ownerUpiId?: string;
+    ownerQrUrl?: string;
+    [key: string]: any;
   } | null;
   tokenAmount: number; // Configurable token amount e.g. 50, 99, 100
   onCompleteBooking: (newBooking: RentalBooking) => void;
   onNavigateToMyBookings: () => void;
+  onOpenReceiptModal?: (booking: RentalBooking) => void;
 }
+
+export const getItemRentPrice = (item: any): number => {
+  if (!item) return 0;
+  if (typeof item.rentPerMonth === 'number' && item.rentPerMonth > 0) return item.rentPerMonth;
+  if (typeof item.rentPerDay === 'number' && item.rentPerDay > 0) return item.rentPerDay;
+  if (typeof item.rentPerHour === 'number' && item.rentPerHour > 0) return item.rentPerHour;
+  if (typeof item.monthlyFee === 'number' && item.monthlyFee > 0) return item.monthlyFee;
+  if (typeof item.pricePerNight === 'number' && item.pricePerNight > 0) return item.pricePerNight;
+  if (typeof item.pricePerPerson === 'number' && item.pricePerPerson > 0) return item.pricePerPerson;
+  if (typeof item.dailyPrice === 'number' && item.dailyPrice > 0) return item.dailyPrice;
+  if (typeof item.price === 'number' && item.price > 0) return item.price;
+  if (Array.isArray(item.rooms) && item.rooms[0] && typeof item.rooms[0].pricePerNight === 'number' && item.rooms[0].pricePerNight > 0) {
+    return item.rooms[0].pricePerNight;
+  }
+  return 0;
+};
+
+export const getItemDeposit = (item: any): number => {
+  if (!item) return 0;
+  if (typeof item.securityDeposit === 'number') return item.securityDeposit;
+  if (typeof item.deposit === 'number') return item.deposit;
+  const baseRent = getItemRentPrice(item);
+  return baseRent > 0 ? baseRent * 1 : 0;
+};
 
 export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
   isOpen,
@@ -74,19 +119,16 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
   item,
   tokenAmount,
   onCompleteBooking,
-  onNavigateToMyBookings
+  onNavigateToMyBookings,
+  onOpenReceiptModal
 }) => {
   if (!isOpen || !item) return null;
 
-  // Check if item is already booked
-  const isAlreadyBooked = existingBookings.some(
-    (b) => b.itemId === item.id && b.status !== 'Cancelled' && b.status !== 'Rejected'
-  );
-
-  const isPropertyAvailable = (item.isAvailable !== false) && !isAlreadyBooked;
-
   // Wizard Steps: 1 = Details & Selection, 2 = Pricing & Rules Review, 3 = Token Payment, 4 = Digital Receipt & Ticket
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
+
+  const actualItemRentPrice = useMemo(() => getItemRentPrice(item), [item]);
+  const actualItemDeposit = useMemo(() => getItemDeposit(item), [item]);
 
   // Category specific state
   const [selectedSeat, setSelectedSeat] = useState<string>('A1');
@@ -96,55 +138,73 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
   const [checkInDate, setCheckInDate] = useState(() => {
     const today = new Date();
     today.setDate(today.getDate() + 1);
-    return today.toISOString().split('T')[0];
+    return getISTDateString(today);
   });
   const [checkOutDate, setCheckOutDate] = useState(() => {
     const today = new Date();
     today.setDate(today.getDate() + 3);
-    return today.toISOString().split('T')[0];
+    return getISTDateString(today);
   });
   const [pickupLocation, setPickupLocation] = useState(item.location || 'Airport / Station Pickup Hub');
   const [dropoffLocation, setDropoffLocation] = useState(item.location || 'City Dropoff Point');
-  const [drivingLicense, setDrivingLicense] = useState('DL-1420210089214');
+  const [drivingLicense, setDrivingLicense] = useState('');
   const [restaurantTimeSlot, setRestaurantTimeSlot] = useState('7:30 PM');
   const [restaurantTableType, setRestaurantTableType] = useState('Couple Candlelight Table');
   const [turfTimeSlot, setTurfTimeSlot] = useState('7:00 PM - 9:00 PM (Floodlit Evening Slot)');
 
   // Form Fields State
-  const [fullName, setFullName] = useState(currentUser?.name || 'Rahul Sharma');
-  const [phone, setPhone] = useState(currentUser?.phone || '9876543210');
-  const [otpCode, setOtpCode] = useState('4321');
+  const [fullName, setFullName] = useState(currentUser?.name || '');
+  const [phone, setPhone] = useState(currentUser?.phone || '');
+  const [otpCode, setOtpCode] = useState('');
   const [isOtpSent, setIsOtpSent] = useState(false);
-  const [isPhoneVerified, setIsPhoneVerified] = useState(true);
+  const [isPhoneVerified, setIsPhoneVerified] = useState(Boolean(currentUser?.phone));
   const [otpError, setOtpError] = useState('');
 
-  const [email, setEmail] = useState(currentUser?.email || 'rahul.sharma@example.com');
-  const [dob, setDob] = useState('1998-05-15');
-  const [currentAddress, setCurrentAddress] = useState('Flat 402, Royal Palms, Koregaon Park, Pune, Maharashtra - 411001');
-  const [permanentAddress, setPermanentAddress] = useState('House 12, MG Road, Ward 4, Nashik, Maharashtra - 422001');
-  const [companyCollegeName, setCompanyCollegeName] = useState('Infosys Technology Ltd / COEP Pune');
-  const [occupation, setOccupation] = useState('Working Professional');
+  const [email, setEmail] = useState(currentUser?.email || '');
+  const [dob, setDob] = useState('');
+  const [currentAddress, setCurrentAddress] = useState(currentUser?.address || '');
+  const [permanentAddress, setPermanentAddress] = useState('');
+  const [companyCollegeName, setCompanyCollegeName] = useState('');
+  const [occupation, setOccupation] = useState(currentUser ? 'Working Professional' : '');
   const [monthlyIncome, setMonthlyIncome] = useState('₹50,000 - ₹1,00,000');
   const [occupantsCount, setOccupantsCount] = useState(1);
   
-  const [moveInDate, setMoveInDate] = useState(() => {
-    const today = new Date();
-    today.setDate(today.getDate() + 3);
-    return today.toISOString().split('T')[0];
-  });
+  const [moveInDate, setMoveInDate] = useState(() => getISTDateString());
+  const [rentalDurationType, setRentalDurationType] = useState<'1 month' | '3 months' | '6 months' | '11 months' | 'Custom'>('1 month');
+
+  const durationMonths = useMemo(() => {
+    if (rentalDurationType === '1 month') return 1;
+    if (rentalDurationType === '3 months') return 3;
+    if (rentalDurationType === '6 months') return 6;
+    if (rentalDurationType === '11 months') return 11;
+    return 1;
+  }, [rentalDurationType]);
+
   const [expectedMoveOutDate, setExpectedMoveOutDate] = useState(() => {
     const today = new Date();
-    today.setMonth(today.getMonth() + 11);
-    return today.toISOString().split('T')[0];
+    today.setMonth(today.getMonth() + 1);
+    return getISTDateString(today);
   });
-  const [rentalDurationType, setRentalDurationType] = useState<'1 month' | '6 months' | '11 months' | 'Custom'>('11 months');
-  const [preferredVisitDateTime, setPreferredVisitDateTime] = useState('Tomorrow at 4:00 PM');
+
+  useEffect(() => {
+    try {
+      const d = new Date(moveInDate);
+      if (!isNaN(d.getTime())) {
+        d.setMonth(d.getMonth() + durationMonths);
+        setExpectedMoveOutDate(getISTDateString(d));
+      }
+    } catch {
+      // ignore
+    }
+  }, [moveInDate, durationMonths]);
+
+  const [preferredVisitDateTime, setPreferredVisitDateTime] = useState('Immediate Handover');
 
   // Hourly Vehicle Rental Duration State & Calculator
   const [vehicleRentalMode, setVehicleRentalMode] = useState<'hourly' | 'daily' | 'weekly'>('hourly');
-  const [pickupDate, setPickupDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [pickupDate, setPickupDate] = useState(() => getISTDateString());
   const [pickupTime, setPickupTime] = useState('10:00 AM');
-  const [returnDate, setReturnDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [returnDate, setReturnDate] = useState(() => getISTDateString());
   const [returnTime, setReturnTime] = useState('04:00 PM');
 
   // Automatic Hours Calculation Helper
@@ -173,33 +233,29 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
     }
   }, [pickupDate, pickupTime, returnDate, returnTime]);
 
-  const vehicleHourlyRate = item.hourlyPrice || (item.category === 'vehicle' ? 150 : item.price);
-  const calculatedVehicleRentCost = vehicleRentalMode === 'hourly'
-    ? totalCalculatedHours * vehicleHourlyRate
-    : item.price;
-
   const [govIdType, setGovIdType] = useState<'Aadhaar Card' | 'Passport' | 'Driving Licence' | 'Voter ID'>('Aadhaar Card');
-  const [govIdNumber, setGovIdNumber] = useState('5489 1234 9876');
-  const [idProofFileName, setIdProofFileName] = useState<string | null>('aadhaar_card_verified.pdf');
-  const [idProofPreview, setIdProofPreview] = useState<string | null>('https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=300&q=80');
+  const [govIdNumber, setGovIdNumber] = useState(currentUser?.govIdNumber || '');
+  const [idProofFileName, setIdProofFileName] = useState<string | null>(null);
+  const [idProofPreview, setIdProofPreview] = useState<string | null>(null);
   
-  const [passportPhotoFileName, setPassportPhotoFileName] = useState<string | null>('passport_photo.jpg');
-  const [passportPhotoPreview, setPassportPhotoPreview] = useState<string | null>('https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80');
+  const [passportPhotoFileName, setPassportPhotoFileName] = useState<string | null>(null);
+  const [passportPhotoPreview, setPassportPhotoPreview] = useState<string | null>(null);
   
-  const [emergencyContact, setEmergencyContact] = useState('9829012345');
+  const [emergencyContact, setEmergencyContact] = useState('');
   const [emergencyRelation, setEmergencyRelation] = useState('Parent / Guardian');
 
   // Step 3 Terms & Payment
   const [agreeCorrectInfo, setAgreeCorrectInfo] = useState(true);
   const [agreeTermsPolicy, setAgreeTermsPolicy] = useState(true);
-  const [paymentMethod, setPaymentMethod] = useState<'upi' | 'card' | 'netbanking' | 'wallet'>('upi');
+  const [paymentMethod, setPaymentMethod] = useState<'razorpay' | 'upi' | 'card' | 'netbanking' | 'wallet'>('razorpay');
   const [selectedUpiApp, setSelectedUpiApp] = useState<'gpay' | 'phonepe' | 'paytm' | 'cred' | 'custom'>('gpay');
   const [customUpiId, setCustomUpiId] = useState('');
   const [upiVerified, setUpiVerified] = useState(false);
-  const [cardNumber, setCardNumber] = useState('4532 8921 4455 1092');
-  const [cardExpiry, setCardExpiry] = useState('08/29');
-  const [cardCvv, setCardCvv] = useState('883');
-  const [cardHolder, setCardHolder] = useState('Rahul Sharma');
+  const [utrNumber, setUtrNumber] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardExpiry, setCardExpiry] = useState('');
+  const [cardCvv, setCardCvv] = useState('');
+  const [cardHolder, setCardHolder] = useState(currentUser?.name || '');
   const [selectedBank, setSelectedBank] = useState('HDFC Bank');
   const [isPaying, setIsPaying] = useState(false);
   const [paymentStepText, setPaymentStepText] = useState('');
@@ -249,23 +305,103 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
 
   // Step 4 Result State
   const [createdBooking, setCreatedBooking] = useState<RentalBooking | null>(null);
+  const [ownerSmsResult, setOwnerSmsResult] = useState<SmsDispatchResult | null>(null);
 
-  // Category specific calculations
+  // Category specific calculations across all 10 rental verticals
   const platformFee = 100;
   const isHotel = item.category === 'hotel';
   const isVehicle = item.category === 'vehicle';
   const isClothing = item.category === 'clothing';
-  const isSeatCategory = item.category === 'library' || item.category === 'sports_turf';
+  const isLibrary = item.category === 'library';
+  const isSportsTurf = item.category === 'sports_turf';
   const isRestaurant = item.category === 'restaurant';
+  const isGeneral = item.category === 'general';
+  const isSeatCategory = isLibrary || isSportsTurf;
   const isProperty = item.category === 'residential' || item.category === 'commercial' || item.category === 'student' || item.category === 'property';
+
+  // Sports Turf states & calculations
+  const [turfDurationHours, setTurfDurationHours] = useState<number>(2);
+  const [turfIncludeGear, setTurfIncludeGear] = useState<boolean>(true);
+  const turfHourlyRate = (item as any).rentPerHour || (item as any).hourlyPrice || (actualItemRentPrice > 0 ? actualItemRentPrice : 800);
+  const turfGearCost = turfIncludeGear ? 200 : 0;
+  const calculatedTurfTotal = (turfDurationHours * turfHourlyRate) + turfGearCost;
+
+  // Library states & calculations
+  const [libraryPassType, setLibraryPassType] = useState<'daily' | 'monthly'>('monthly');
+  const libraryDailyRate = (item as any).dailyPassPrice || (item as any).rentPerDay || 150;
+  const libraryMonthlyRate = (item as any).monthlyPassPrice || (actualItemRentPrice > 0 ? actualItemRentPrice : 1200);
+  const calculatedLibraryTotal = libraryPassType === 'daily' ? libraryDailyRate : libraryMonthlyRate;
+
+  // Restaurant calculations
+  const restaurantAvgCost = (item as any).averageCostForTwo || (actualItemRentPrice > 0 ? actualItemRentPrice : 800);
+
+  // General Appliance states & calculations
+  const [applianceDurationMonths, setApplianceDurationMonths] = useState<number>(3);
+  const [applianceNeedsDelivery, setApplianceNeedsDelivery] = useState<boolean>(true);
+  const applianceMonthlyRent = (item as any).rentPerMonth || (actualItemRentPrice > 0 ? actualItemRentPrice : 600);
+  const applianceDeposit = actualItemDeposit || (item as any).applianceDeposit || 1000;
+  const applianceDeliveryFee = applianceNeedsDelivery ? ((item as any).deliveryFee || 250) : 0;
+  const calculatedApplianceTotal = (applianceDurationMonths * applianceMonthlyRent) + applianceDeposit + applianceDeliveryFee;
+
+  // Hotel calculation
+  const calculatedHotelNights = useMemo(() => {
+    try {
+      const cIn = new Date(checkInDate).getTime();
+      const cOut = new Date(checkOutDate).getTime();
+      const diffDays = Math.ceil((cOut - cIn) / (1000 * 60 * 60 * 24));
+      return Math.max(1, diffDays);
+    } catch {
+      return 1;
+    }
+  }, [checkInDate, checkOutDate]);
+
+  const hotelRoomPrice = (item as any).rentPerDay || (item as any).pricePerNight || (actualItemRentPrice > 0 ? actualItemRentPrice : 1800);
+  const hotelBaseTariff = hotelRoomPrice * calculatedHotelNights * hotelRoomsCount;
+  const hotelGst = Math.round(hotelBaseTariff * 0.12);
+  const calculatedHotelTotal = hotelBaseTariff + hotelGst;
+
+  // Vehicle calculation (Hourly, Daily, Weekly)
+  const totalVehicleDays = useMemo(() => {
+    try {
+      const pD = new Date(pickupDate).getTime();
+      const rD = new Date(returnDate).getTime();
+      const diff = Math.ceil((rD - pD) / (1000 * 60 * 60 * 24));
+      return Math.max(1, diff);
+    } catch {
+      return 1;
+    }
+  }, [pickupDate, returnDate]);
+
+  const vehicleHourlyRate = (item as any).rentPerHour || (item as any).hourlyPrice || (actualItemRentPrice > 0 ? actualItemRentPrice : 150);
+  const vehicleDailyRate = (item as any).rentPerDay || (item as any).dailyPrice || (actualItemRentPrice > 0 ? actualItemRentPrice : 1500);
+
+  const calculatedVehicleRentCost = useMemo(() => {
+    if (vehicleRentalMode === 'hourly') {
+      return totalCalculatedHours * vehicleHourlyRate;
+    } else if (vehicleRentalMode === 'daily') {
+      return totalVehicleDays * vehicleDailyRate;
+    } else {
+      const weeks = Math.max(1, Math.ceil(totalVehicleDays / 7));
+      return weeks * (vehicleDailyRate * 6);
+    }
+  }, [vehicleRentalMode, totalCalculatedHours, vehicleHourlyRate, totalVehicleDays, vehicleDailyRate]);
+
+  // Property calculation (residential, commercial, student)
+  const propertyMaintenanceCharges = isProperty && item.category !== 'student' ? ((item as any).maintenanceCharges || 0) : 0;
+  const calculatedPropertyRent = actualItemRentPrice * durationMonths;
+  const calculatedPropertyMaintenance = propertyMaintenanceCharges * durationMonths;
+  const calculatedPropertyTotal = calculatedPropertyRent + actualItemDeposit + calculatedPropertyMaintenance;
 
   // Clothing Specific States & Calculator
   const [clothingSizeSelection, setClothingSizeSelection] = useState<string>(item.size || 'L');
-  const [userHeightCm, setUserHeightCm] = useState<string>('175');
-  const [userWeightKg, setUserWeightKg] = useState<string>('70');
-  const [deliveryMethod, setDeliveryMethod] = useState<'home_delivery' | 'pickup_from_owner'>('home_delivery');
+  const [userHeightCm, setUserHeightCm] = useState('175');
+  const [userWeightKg, setUserWeightKg] = useState('70');
+  const [chestBustInch, setChestBustInch] = useState('38');
+  const [waistInch, setWaistInch] = useState('32');
+  const [preferredFit, setPreferredFit] = useState<'Regular Fit' | 'Slim Fit' | 'Comfort / Relaxed Fit'>('Regular Fit');
+  const [deliveryMethod, setDeliveryMethod] = useState<'home_delivery' | 'self_pickup'>('home_delivery');
   const [returnMethod, setReturnMethod] = useState<'doorstep_pickup' | 'self_return'>('doorstep_pickup');
-  const [deliveryAddressInput, setDeliveryAddressInput] = useState('B-402, Royal Residency, City Center');
+  const [deliveryAddressInput, setDeliveryAddressInput] = useState(currentUser?.address || '');
 
   const totalClothingDays = useMemo(() => {
     try {
@@ -279,9 +415,9 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
     }
   }, [pickupDate, returnDate]);
 
-  const clothingDailyRate = item.price || 500;
+  const clothingDailyRate = actualItemRentPrice > 0 ? actualItemRentPrice : 500;
   const calculatedClothingRentCost = totalClothingDays * clothingDailyRate;
-  const clothingDeposit = item.deposit || 1000;
+  const clothingDeposit = actualItemDeposit > 0 ? actualItemDeposit : 1000;
   const clothingDeliveryFee = deliveryMethod === 'home_delivery' ? 100 : 0;
 
   const recommendedSize = useMemo(() => {
@@ -295,19 +431,87 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
     return 'XXL (Double XL)';
   }, [userHeightCm, userWeightKg]);
 
+  // Check if item is already booked for overlapping active dates (category-aware & safely after hooks)
+  const isAlreadyBooked = useMemo(() => {
+    return existingBookings.some((b) => {
+      if (b.itemId !== item.id) return false;
+      if (b.status === 'Cancelled' || b.status === 'Rejected' || b.status === 'Completed') return false;
+      
+      const bStart = b.startDate || (b as any).moveInDate || (b as any).checkInDate || (b as any).pickupDate;
+      const bEnd = b.endDate || (b as any).expectedMoveOutDate || (b as any).checkOutDate || (b as any).returnDate;
+      
+      const reqStart = isHotel ? checkInDate : (isVehicle || isClothing) ? pickupDate : moveInDate;
+      const reqEnd = isHotel ? checkOutDate : (isVehicle || isClothing) ? returnDate : expectedMoveOutDate;
+
+      if (bStart && bEnd && reqStart && reqEnd) {
+        return (reqStart <= bEnd) && (reqEnd >= bStart);
+      }
+      
+      return b.status === 'Accepted' || b.status === 'Active' || b.status === 'Approved' || b.status === 'Booking Confirmed';
+    });
+  }, [existingBookings, item.id, isHotel, isVehicle, isClothing, checkInDate, checkOutDate, pickupDate, returnDate, moveInDate, expectedMoveOutDate]);
+
+  const isPropertyAvailable = (item.isAvailable !== false) && !isAlreadyBooked;
+
   const calculatePayableNow = () => {
     if (isHotel) {
-      const roomTotal = item.price * hotelNights * hotelRoomsCount;
-      const advance25 = Math.round(roomTotal * 0.25);
-      return Math.min(tokenAmount, advance25) + platformFee;
+      return tokenAmount + platformFee;
+    }
+    if (isRestaurant) {
+      return Math.min(tokenAmount, 200) + platformFee;
     }
     if (isClothing) {
       return tokenAmount + platformFee + clothingDeliveryFee;
+    }
+    if (isGeneral) {
+      return tokenAmount + platformFee + applianceDeliveryFee;
     }
     return tokenAmount + platformFee;
   };
 
   const payableNowTotal = calculatePayableNow();
+
+  const advancePaidTowardsGross = useMemo(() => {
+    if (isClothing) return tokenAmount + clothingDeliveryFee;
+    if (isGeneral) return tokenAmount + applianceDeliveryFee;
+    if (isRestaurant) return Math.min(tokenAmount, 200);
+    return tokenAmount;
+  }, [isClothing, clothingDeliveryFee, isGeneral, applianceDeliveryFee, isRestaurant, tokenAmount]);
+
+  const balanceDueAtHandover = useMemo(() => {
+    if (isClothing) {
+      return Math.max(0, (calculatedClothingRentCost + clothingDeposit + clothingDeliveryFee) - (tokenAmount + clothingDeliveryFee));
+    }
+    if (isVehicle) {
+      return Math.max(0, (calculatedVehicleRentCost + actualItemDeposit) - tokenAmount);
+    }
+    if (isHotel) {
+      return Math.max(0, calculatedHotelTotal - tokenAmount);
+    }
+    if (isRestaurant) {
+      return Math.max(0, restaurantAvgCost - Math.min(tokenAmount, 200));
+    }
+    if (isSportsTurf) {
+      return Math.max(0, calculatedTurfTotal - tokenAmount);
+    }
+    if (isLibrary) {
+      return Math.max(0, calculatedLibraryTotal - tokenAmount);
+    }
+    if (isGeneral) {
+      return Math.max(0, calculatedApplianceTotal - (tokenAmount + applianceDeliveryFee));
+    }
+    // Property (residential, commercial, student)
+    return Math.max(0, calculatedPropertyTotal - tokenAmount);
+  }, [
+    isClothing, calculatedClothingRentCost, clothingDeposit, clothingDeliveryFee,
+    isVehicle, calculatedVehicleRentCost, actualItemDeposit,
+    isHotel, calculatedHotelTotal,
+    isRestaurant, restaurantAvgCost,
+    isSportsTurf, calculatedTurfTotal,
+    isLibrary, calculatedLibraryTotal,
+    isGeneral, calculatedApplianceTotal, applianceDeliveryFee,
+    calculatedPropertyTotal, tokenAmount
+  ]);
 
   // Handle Simulated Phone OTP Verification
   const handleSendOtp = () => {
@@ -341,11 +545,16 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
     }
   };
 
-  // Step 1 Validation -> Next to Pricing
+  // Step 1 Validation -> Next to Pricing (Streamlined & Frictionless)
   const handleNextToPricing = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName || !phone || !email || !govIdNumber || !currentAddress) {
-      alert('Please complete all required fields (Full Legal Name, Phone, Email, Current Address, Government ID Number).');
+    if (!fullName.trim()) {
+      alert('Please enter your Full Name.');
+      return;
+    }
+    const cleanPhone = phone.replace(/\D/g, '');
+    if (!cleanPhone || cleanPhone.length < 10) {
+      alert('Please enter a valid 10-digit mobile number.');
       return;
     }
     setCurrentStep(2);
@@ -360,18 +569,19 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
     setCurrentStep(3);
   };
 
-  // Step 3 Process Payment & Create Booking -> Step 4 Receipt
-  const handleProcessPayment = () => {
+  // Execute Booking Creation Helper
+  const executeBookingCreation = (cleanUtr: string, payMethodName: string = paymentMethod.toUpperCase()) => {
     setIsPaying(true);
-    setPaymentStepText('Connecting to Reserve Bank & NPCI UPI Gateway...');
+    setPaymentStepText(`Locking ₹${payableNowTotal} Token under Ref: ${cleanUtr}...`);
+
+    const targetOwnerUpi = item.ownerUpiId || 'recko.escrow@okhdfcbank';
+    const targetOwnerQr = item.ownerQrUrl || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(
+      `upi://pay?pa=${targetOwnerUpi}&pn=${encodeURIComponent(item.ownerName || 'Recko Owner')}&tr=RCK-${Date.now()}&am=${payableNowTotal}&cu=INR&tn=Recko%20Token%20for%20${encodeURIComponent(item.title)}`
+    )}&color=0f172a&bgcolor=ffffff`;
 
     setTimeout(() => {
-      setPaymentStepText(`Locking ₹${payableNowTotal} in 100% Refundable Escrow Vault...`);
+      setPaymentStepText('Submitting Payment Proof for Host Verification...');
     }, 600);
-
-    setTimeout(() => {
-      setPaymentStepText('Generating Official Digital GST Token Receipt...');
-    }, 1200);
 
     setTimeout(() => {
       setIsPaying(false);
@@ -380,7 +590,91 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
         ? `RC-CLOTH-${Math.floor(100000 + Math.random() * 900000)}`
         : isVehicle
         ? `RC-VEH-${Math.floor(100000 + Math.random() * 900000)}`
+        : isHotel
+        ? `RC-HOTEL-${Math.floor(100000 + Math.random() * 900000)}`
+        : isRestaurant
+        ? `RC-REST-${Math.floor(100000 + Math.random() * 900000)}`
+        : isSportsTurf
+        ? `RC-TURF-${Math.floor(100000 + Math.random() * 900000)}`
+        : isLibrary
+        ? `RC-LIB-${Math.floor(100000 + Math.random() * 900000)}`
+        : isGeneral
+        ? `RC-APPL-${Math.floor(100000 + Math.random() * 900000)}`
         : `RCK-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;
+
+      const computedDurationCount = isHotel
+        ? calculatedHotelNights
+        : isClothing
+        ? totalClothingDays
+        : isVehicle
+        ? (vehicleRentalMode === 'hourly' ? totalCalculatedHours : totalVehicleDays)
+        : isSportsTurf
+        ? turfDurationHours
+        : isGeneral
+        ? applianceDurationMonths
+        : durationMonths;
+
+      const computedDurationUnit: 'hours' | 'days' | 'nights' | 'months' = isHotel
+        ? 'nights'
+        : isClothing
+        ? 'days'
+        : isVehicle
+        ? (vehicleRentalMode === 'hourly' ? 'hours' : 'days')
+        : isSportsTurf
+        ? 'hours'
+        : isGeneral
+        ? 'months'
+        : 'months';
+
+      const computedUnitPrice = isHotel
+        ? hotelRoomPrice
+        : isClothing
+        ? clothingDailyRate
+        : isVehicle
+        ? (vehicleRentalMode === 'hourly' ? vehicleHourlyRate : vehicleDailyRate)
+        : isSportsTurf
+        ? turfHourlyRate
+        : isGeneral
+        ? applianceMonthlyRent
+        : actualItemRentPrice;
+
+      const computedBaseRentalPrice = isHotel
+        ? hotelBaseTariff
+        : isClothing
+        ? calculatedClothingRentCost
+        : isVehicle
+        ? calculatedVehicleRentCost
+        : isSportsTurf
+        ? (turfDurationHours * turfHourlyRate)
+        : isGeneral
+        ? (applianceDurationMonths * applianceMonthlyRent)
+        : (actualItemRentPrice * durationMonths);
+
+      const computedDeposit = isClothing
+        ? clothingDeposit
+        : isVehicle
+        ? actualItemDeposit
+        : isGeneral
+        ? applianceDeposit
+        : isProperty
+        ? actualItemDeposit
+        : 0;
+
+      const computedGrossTotal = isClothing
+        ? calculatedClothingRentCost + clothingDeposit + clothingDeliveryFee
+        : isVehicle
+        ? calculatedVehicleRentCost + actualItemDeposit
+        : isHotel
+        ? calculatedHotelTotal
+        : isRestaurant
+        ? restaurantAvgCost
+        : isSportsTurf
+        ? calculatedTurfTotal
+        : isLibrary
+        ? calculatedLibraryTotal
+        : isGeneral
+        ? calculatedApplianceTotal
+        : calculatedPropertyTotal;
 
       const newBooking: RentalBooking = {
         id: generatedId,
@@ -393,14 +687,37 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
         expectedMoveOutDate,
         rentalDurationType: rentalDurationType as any,
         preferredVisitDateTime,
-        totalPrice: isClothing ? calculatedClothingRentCost + clothingDeposit : item.price + (item.deposit || 0),
-        tokenPaidAmount: payableNowTotal,
-        tokenPaymentStatus: 'Paid',
-        status: 'Pending Verification',
-        bookingDate: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+        totalPrice: computedGrossTotal,
+        grossPayableAmount: computedGrossTotal,
+        monthlyRent: isProperty ? actualItemRentPrice : isGeneral ? applianceMonthlyRent : undefined,
+        rentPerDay: isClothing ? clothingDailyRate : isVehicle ? vehicleDailyRate : isHotel ? hotelRoomPrice : undefined,
+        rentPerHour: isSportsTurf ? turfHourlyRate : (isVehicle && vehicleRentalMode === 'hourly') ? vehicleHourlyRate : undefined,
+        securityDeposit: computedDeposit,
+        deposit: computedDeposit,
+        durationCount: computedDurationCount,
+        durationUnit: computedDurationUnit,
+        unitPrice: computedUnitPrice,
+        baseRentalPrice: computedBaseRentalPrice,
+        maintenanceCharges: isProperty ? (propertyMaintenanceCharges * durationMonths) : 0,
+        deliveryFee: isClothing ? clothingDeliveryFee : isGeneral ? applianceDeliveryFee : 0,
+        taxAmount: isHotel ? hotelGst : 0,
+        balanceDueAtHandover: balanceDueAtHandover,
+        hotelRoomsCount: isHotel ? hotelRoomsCount : undefined,
+        hotelNightsCount: isHotel ? calculatedHotelNights : undefined,
+        daysCount: isVehicle ? totalVehicleDays : isClothing ? totalClothingDays : isHotel ? calculatedHotelNights : undefined,
+        totalRentalHours: isVehicle && vehicleRentalMode === 'hourly' ? totalCalculatedHours : undefined,
+        rentalDurationMode: isVehicle ? vehicleRentalMode : undefined,
+        tokenPaidAmount: advancePaidTowardsGross,
+        platformFee: platformFee,
+        tokenPaymentStatus: payMethodName === 'RAZORPAY' ? 'Paid' : 'Pending',
+        status: payMethodName === 'RAZORPAY' ? 'Booking Confirmed' : 'Pending Verification',
+        bookingDate: formatISTDateDisplay(new Date()),
         ownerId: item.ownerId,
         ownerName: item.ownerName,
         ownerContact: item.ownerContact,
+        utrNumber: cleanUtr,
+        ownerUpiId: targetOwnerUpi,
+        ownerQrUrl: targetOwnerQr,
 
         // Custom Category Attributes
         hotelRoomType: isHotel ? hotelRoomType : undefined,
@@ -429,21 +746,92 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
         emergencyContact: emergencyContact ? `${emergencyContact} (${emergencyRelation})` : undefined,
 
         // Auto-filled Property Details
-        roomType: item.subType || (item.category === 'student' ? 'PG Shared Room' : '1BHK / 2BHK Rental Unit'),
-        furnishedStatus: item.furnishing || 'Semi-Furnished',
-        maintenanceAmount: 1000,
+        roomType: item.subType || (item.category === 'student' ? 'PG Shared Room' : isHotel ? hotelRoomType : isVehicle ? 'Automobile' : isClothing ? 'Apparel' : isSportsTurf ? 'Turf Arena' : isLibrary ? 'Study Desk' : isGeneral ? 'Appliance' : '1BHK / 2BHK Rental Unit'),
+        furnishedStatus: item.furnishing || 'Standard',
+        maintenanceAmount: propertyMaintenanceCharges,
         utilityCharges: 'As per Govt Meter / Included',
         fullAddress: item.fullAddress || `${item.location}, ${item.city}`,
         amenities: item.amenities && item.amenities.length > 0 ? item.amenities : ['Wi-Fi', 'AC', 'Parking', 'Kitchen', 'Attached Bathroom'],
-        paymentMethod: paymentMethod.toUpperCase(),
-        transactionId: `TXN-${Math.floor(10000000 + Math.random() * 90000000)}`
+        paymentMethod: payMethodName,
+        transactionId: `TXN-${cleanUtr}`,
+
+        // Automatic Owner Mobile SMS Alert Fields
+        ownerSmsAlertSent: true,
+        ownerSmsDeliveredTo: item.ownerContact || '+91 98765 43210',
+        ownerSmsTimestamp: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
       };
+
+      // Automatically dispatch real-time SMS to owner's mobile number
+      const smsPayload = {
+        ownerName: item.ownerName,
+        ownerPhone: item.ownerContact,
+        userName: fullName,
+        userPhone: phone,
+        userEmail: email,
+        itemTitle: item.title,
+        bookingId: generatedId,
+        startDate: isClothing || isVehicle ? pickupDate : isHotel ? checkInDate : moveInDate,
+        duration: rentalDurationType,
+        rentAmount: isProperty ? actualItemRentPrice : undefined,
+        tokenPaidAmount: payableNowTotal,
+        category: item.category
+      };
+
+      sendOwnerBookingSms(smsPayload).then((res) => {
+        setOwnerSmsResult(res);
+      }).catch((e) => {
+        console.error('Owner SMS auto-dispatch error:', e);
+      });
 
       playPaymentSuccessChime();
       setCreatedBooking(newBooking);
       onCompleteBooking(newBooking);
       setCurrentStep(4);
-    }, 1800);
+    }, 1200);
+  };
+
+  // Step 3 Process Payment & Create Booking -> Step 4 Receipt
+  const handleProcessPayment = () => {
+    if (paymentMethod === 'razorpay') {
+      handlePayWithRazorpay();
+      return;
+    }
+
+    if (!utrNumber || utrNumber.trim().length < 6) {
+      alert('⚠️ Payment Reference Required:\n\nPlease enter your 12-digit UTR / Payment Transaction Reference Number (from GPay / PhonePe / Paytm) to confirm token payment verification.');
+      return;
+    }
+
+    executeBookingCreation(utrNumber.trim().toUpperCase(), paymentMethod.toUpperCase());
+  };
+
+  // Trigger Razorpay Payment Gateway Modal
+  const handlePayWithRazorpay = async () => {
+    setIsPaying(true);
+    setPaymentStepText('Launching Official Razorpay Payment Gateway...');
+
+    const success = await openRazorpayCheckout({
+      amount: payableNowTotal,
+      name: 'Recko India Rental Escrow',
+      description: `Refundable Token Payment for ${item.title}`,
+      prefill: {
+        name: fullName || 'Tenant Customer',
+        email: email || 'tenant@recko.in',
+        contact: phone || '9876543210'
+      },
+      handler: (response) => {
+        const razorpayPaymentId = response.razorpay_payment_id || `pay_${Math.random().toString(36).substring(2, 14)}`;
+        setUtrNumber(razorpayPaymentId.toUpperCase());
+        executeBookingCreation(razorpayPaymentId.toUpperCase(), 'RAZORPAY');
+      },
+      onDismiss: () => {
+        setIsPaying(false);
+      }
+    });
+
+    if (!success) {
+      setIsPaying(false);
+    }
   };
 
   return (
@@ -605,10 +993,10 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
 
               <div className="w-full sm:w-auto text-left sm:text-right sm:border-l sm:border-slate-200 sm:pl-4 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-200 flex sm:flex-col justify-between items-center sm:items-end">
                 <div>
-                  <span className="text-[10px] text-slate-500 uppercase font-semibold tracking-wider block">Monthly Rent</span>
-                  <span className="text-base sm:text-lg font-black text-amber-600">₹{item.price.toLocaleString('en-IN')}</span>
+                  <span className="text-[10px] text-slate-500 uppercase font-semibold tracking-wider block">Owner Listed Rent Rate</span>
+                  <span className="text-base sm:text-lg font-black text-amber-600">₹{actualItemRentPrice.toLocaleString('en-IN')}</span>
                 </div>
-                <span className="text-[10px] text-slate-500 block font-medium">{item.priceLabel}</span>
+                <span className="text-[10px] text-slate-500 block font-medium">{item.priceLabel || 'Per Period'}</span>
               </div>
             </div>
           </div>
@@ -780,166 +1168,69 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                 </div>
               )}
 
-              {/* Full Name & Email */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <label className="block text-slate-800 font-semibold mb-1.5">
-                    Full Legal Name (as per Govt ID) <span className="text-amber-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <User className="absolute left-3.5 top-3 h-4 w-4 text-amber-500" />
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Rahul Sharma"
-                      value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 rounded-xl pl-10 pr-3 py-2.5 text-slate-900 font-medium outline-none transition-all"
-                    />
+              {/* Streamlined Primary Contact Details */}
+              <div className="bg-slate-50/90 p-4 sm:p-5 rounded-2xl border border-slate-200 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                  <div className="flex items-center space-x-2">
+                    <User className="h-4.5 w-4.5 text-amber-500 shrink-0" />
+                    <h4 className="font-bold text-slate-900 text-xs sm:text-sm uppercase tracking-wider">
+                      Primary Contact Details
+                    </h4>
                   </div>
+                  <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full">
+                    Fast 1-Step Verification
+                  </span>
                 </div>
 
-                <div>
-                  <label className="block text-slate-800 font-semibold mb-1.5">
-                    Email Address <span className="text-amber-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <Mail className="absolute left-3.5 top-3 h-4 w-4 text-amber-500" />
-                    <input
-                      type="email"
-                      required
-                      placeholder="rahul@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 rounded-xl pl-10 pr-3 py-2.5 text-slate-900 font-medium outline-none transition-all"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Phone + Live OTP Verification Box */}
-              <div className="bg-slate-50 p-3.5 sm:p-4 rounded-2xl border border-slate-200 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                  <label className="block text-slate-800 font-semibold">
-                    Mobile Number (Instant OTP Verification) <span className="text-amber-500">*</span>
-                  </label>
-                  {isPhoneVerified && (
-                    <span className="bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-0.5 rounded-full text-[10px] font-bold flex items-center space-x-1 w-fit">
-                      <CheckCircle2 className="h-3 w-3 text-emerald-600" />
-                      <span>Phone Number Verified ✓</span>
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <div className="relative flex-1">
-                    <span className="absolute left-3.5 top-2.5 text-amber-600 font-bold">+91</span>
-                    <input
-                      type="tel"
-                      required
-                      placeholder="9876543210"
-                      value={phone}
-                      disabled={isPhoneVerified}
-                      onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                      className="w-full bg-white border border-slate-300 rounded-xl pl-12 pr-3 py-2.5 text-slate-900 font-mono tracking-wider outline-none focus:border-amber-500"
-                    />
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                  <div>
+                    <label className="block text-slate-800 text-xs font-bold mb-1.5">
+                      Full Legal Name <span className="text-amber-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <User className="absolute left-3.5 top-3 h-4 w-4 text-amber-500" />
+                      <input
+                        type="text"
+                        required
+                        placeholder="e.g. Rahul Sharma"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        className="w-full bg-white border border-slate-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 rounded-xl pl-10 pr-3 py-2.5 text-slate-900 font-medium outline-none transition-all text-xs sm:text-sm"
+                      />
+                    </div>
                   </div>
 
-                  {!isPhoneVerified && !isOtpSent && (
-                    <button
-                      type="button"
-                      onClick={handleSendOtp}
-                      className="bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-bold px-4 py-2.5 rounded-xl cursor-pointer transition-all shrink-0 shadow-md shadow-amber-500/20"
-                    >
-                      Send OTP
-                    </button>
-                  )}
-
-                  {!isPhoneVerified && isOtpSent && (
-                    <button
-                      type="button"
-                      onClick={handleVerifyOtp}
-                      className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-4 py-2.5 rounded-xl cursor-pointer transition-all shrink-0"
-                    >
-                      Verify (4321)
-                    </button>
-                  )}
-                </div>
-              </div>
-
-              {/* Tenant Profile & Work/Education Details */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-slate-800 font-semibold mb-1">Date of Birth *</label>
-                  <input
-                    type="date"
-                    required
-                    value={dob}
-                    onChange={(e) => setDob(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium outline-none focus:border-amber-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-slate-800 font-semibold mb-1">Occupation *</label>
-                  <select
-                    value={occupation}
-                    onChange={(e) => setOccupation(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 outline-none focus:border-amber-500 font-medium"
-                  >
-                    <option value="Job">Job / Working Professional</option>
-                    <option value="Student">Student / Scholar</option>
-                    <option value="Business">Business / Self-Employed</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-slate-800 font-semibold mb-1">Company / College Name *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Infosys / COEP Pune"
-                    value={companyCollegeName}
-                    onChange={(e) => setCompanyCollegeName(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-xl p-2.5 text-slate-900 outline-none focus:border-amber-500 font-medium"
-                  />
-                </div>
-              </div>
-
-              {/* Addresses: Current & Permanent */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-slate-800 font-semibold mb-1">
-                    Current Residential Address <span className="text-amber-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <MapPin className="absolute left-3.5 top-3 h-4 w-4 text-amber-500" />
-                    <input
-                      type="text"
-                      required
-                      placeholder="Flat No, Building, City"
-                      value={currentAddress}
-                      onChange={(e) => setCurrentAddress(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-10 pr-3 py-2.5 text-slate-900 font-medium outline-none focus:border-amber-500"
-                    />
+                  <div>
+                    <label className="block text-slate-800 text-xs font-bold mb-1.5">
+                      Mobile Number <span className="text-amber-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3.5 top-2.5 text-amber-600 font-bold text-xs sm:text-sm">+91</span>
+                      <input
+                        type="tel"
+                        required
+                        placeholder="9876543210"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                        className="w-full bg-white border border-slate-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 rounded-xl pl-12 pr-3 py-2.5 text-slate-900 font-mono tracking-wider outline-none text-xs sm:text-sm"
+                      />
+                    </div>
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-slate-800 font-semibold mb-1">
-                    Permanent Hometown Address <span className="text-amber-500">*</span>
-                  </label>
-                  <div className="relative">
-                    <Building2 className="absolute left-3.5 top-3 h-4 w-4 text-amber-500" />
-                    <input
-                      type="text"
-                      required
-                      placeholder="Hometown Address & State"
-                      value={permanentAddress}
-                      onChange={(e) => setPermanentAddress(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-xl pl-10 pr-3 py-2.5 text-slate-900 font-medium outline-none focus:border-amber-500"
-                    />
+                  <div>
+                    <label className="block text-slate-800 text-xs font-bold mb-1.5">
+                      Email Address <span className="text-slate-400 font-normal">(Optional)</span>
+                    </label>
+                    <div className="relative">
+                      <Mail className="absolute left-3.5 top-3 h-4 w-4 text-amber-500" />
+                      <input
+                        type="email"
+                        placeholder="rahul@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full bg-white border border-slate-300 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 rounded-xl pl-10 pr-3 py-2.5 text-slate-900 font-medium outline-none transition-all text-xs sm:text-sm"
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -971,7 +1262,7 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                     </div>
                   </div>
 
-                  {vehicleRentalMode === 'hourly' && (
+                  {vehicleRentalMode === 'hourly' ? (
                     <div className="space-y-3">
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         {/* Pickup Schedule */}
@@ -1048,6 +1339,45 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                         </div>
                       </div>
                     </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="bg-white p-3 rounded-xl border border-slate-200">
+                          <label className="text-[10px] text-slate-700 font-bold block mb-1">Pickup Date</label>
+                          <input
+                            type="date"
+                            value={pickupDate}
+                            onChange={(e) => setPickupDate(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-semibold"
+                          />
+                        </div>
+                        <div className="bg-white p-3 rounded-xl border border-slate-200">
+                          <label className="text-[10px] text-slate-700 font-bold block mb-1">Return Date</label>
+                          <input
+                            type="date"
+                            value={returnDate}
+                            onChange={(e) => setReturnDate(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-300 rounded-lg p-2 text-xs font-semibold"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="bg-white p-3.5 rounded-xl border border-amber-400 flex justify-between items-center text-xs shadow-2xs">
+                        <div>
+                          <span className="text-[10px] text-slate-500 uppercase font-bold block">Rental Duration</span>
+                          <strong className="text-amber-800 text-sm font-black flex items-center space-x-1 font-mono">
+                            <Calendar className="h-4 w-4 text-amber-600" />
+                            <span>{totalVehicleDays} Days ({vehicleRentalMode.toUpperCase()} MODE)</span>
+                          </strong>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-[10px] text-slate-500 uppercase font-bold block">Rate & Estimated Rent</span>
+                          <strong className="text-slate-900 text-sm font-black font-mono">
+                            ₹{vehicleDailyRate}/day × {totalVehicleDays} days = ₹{calculatedVehicleRentCost}
+                          </strong>
+                        </div>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
@@ -1101,37 +1431,6 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                           {sz}
                         </button>
                       ))}
-                    </div>
-
-                    {/* AI Smart Size Recommender Box */}
-                    <div className="bg-amber-50 p-3 rounded-xl border border-amber-300 space-y-2 text-xs">
-                      <span className="font-bold text-amber-950 text-[11px] flex items-center space-x-1.5">
-                        <span>💡 AI Smart Size Recommender</span>
-                      </span>
-                      <div className="grid grid-cols-2 gap-2">
-                        <div>
-                          <label className="text-[10px] text-slate-700 font-bold block mb-1">Your Height (CM)</label>
-                          <input
-                            type="number"
-                            value={userHeightCm}
-                            onChange={(e) => setUserHeightCm(e.target.value)}
-                            className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono font-bold"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[10px] text-slate-700 font-bold block mb-1">Your Weight (KG)</label>
-                          <input
-                            type="number"
-                            value={userWeightKg}
-                            onChange={(e) => setUserWeightKg(e.target.value)}
-                            className="w-full bg-white border border-slate-300 rounded-lg p-1.5 text-xs font-mono font-bold"
-                          />
-                        </div>
-                      </div>
-                      <div className="bg-white p-2 rounded-lg border border-amber-200 text-[11px] font-bold text-amber-900 flex justify-between items-center">
-                        <span>Suggested Fit:</span>
-                        <span className="font-mono text-amber-700 text-xs font-black">{recommendedSize}</span>
-                      </div>
                     </div>
                   </div>
 
@@ -1192,8 +1491,8 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                             <input
                               type="radio"
                               name="delivery"
-                              checked={deliveryMethod === 'pickup_from_owner'}
-                              onChange={() => setDeliveryMethod('pickup_from_owner')}
+                              checked={deliveryMethod === 'self_pickup'}
+                              onChange={() => setDeliveryMethod('self_pickup')}
                               className="accent-amber-500"
                             />
                             <span className="font-bold text-slate-900">🔘 Self Pickup from Boutique (Free)</span>
@@ -1231,158 +1530,277 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                 </div>
               )}
 
-              {/* Rental Period & Visit Schedule Box */}
-              <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-300/70 space-y-3">
-                <div className="flex items-center space-x-2 border-b border-amber-200 pb-2">
-                  <Calendar className="h-4.5 w-4.5 text-amber-600" />
-                  <h4 className="font-bold text-amber-900 text-xs uppercase tracking-wider">
-                    Rental Period & Preferred Visit Schedule
-                  </h4>
+              {/* Sports Turf Duration & Gear Options */}
+              {isSportsTurf && (
+                <div className="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-300/70 space-y-3">
+                  <div className="flex items-center space-x-2 border-b border-emerald-200 pb-2">
+                    <Sparkles className="h-4.5 w-4.5 text-emerald-600" />
+                    <h4 className="font-bold text-emerald-900 text-xs uppercase tracking-wider">
+                      Sports Turf Slot & Duration Details
+                    </h4>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                    <div>
+                      <label className="block text-slate-800 font-semibold mb-1">Playing Date *</label>
+                      <input
+                        type="date"
+                        value={moveInDate}
+                        onChange={(e) => setMoveInDate(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold text-slate-900"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-slate-800 font-semibold mb-1">Selected Slot Timing *</label>
+                      <select
+                        value={turfTimeSlot}
+                        onChange={(e) => setTurfTimeSlot(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold text-slate-900"
+                      >
+                        <option value="06:00 AM - 08:00 AM (Morning Sunrise Slot)">06:00 AM - 08:00 AM (Morning)</option>
+                        <option value="04:00 PM - 06:00 PM (Afternoon Match Slot)">04:00 PM - 06:00 PM (Afternoon)</option>
+                        <option value="07:00 PM - 09:00 PM (Floodlit Evening Prime)">07:00 PM - 09:00 PM (Floodlit Prime)</option>
+                        <option value="09:00 PM - 11:00 PM (Midnight Super League)">09:00 PM - 11:00 PM (Late Night)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-800 font-semibold mb-1">Duration (Hours) *</label>
+                      <select
+                        value={turfDurationHours}
+                        onChange={(e) => setTurfDurationHours(Number(e.target.value))}
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold text-slate-900"
+                      >
+                        <option value={1}>1 Hour Slot</option>
+                        <option value={2}>2 Hours Slot</option>
+                        <option value={3}>3 Hours Tournament</option>
+                        <option value={4}>4 Hours Full Match</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-emerald-200">
+                    <label className="flex items-center space-x-2 text-xs font-bold text-slate-800 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={turfIncludeGear}
+                        onChange={(e) => setTurfIncludeGear(e.target.checked)}
+                        className="accent-emerald-600 h-4 w-4 rounded"
+                      />
+                      <span>Include Balls, Bibs & Playing Gear (+₹200)</span>
+                    </label>
+                    <span className="font-mono text-emerald-700 font-black text-xs">
+                      {turfDurationHours} hrs × ₹{turfHourlyRate} {turfIncludeGear ? '+ ₹200' : ''} = ₹{calculatedTurfTotal}
+                    </span>
+                  </div>
                 </div>
+              )}
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  <div>
-                    <label className="block text-slate-800 font-semibold mb-1">Move-In Date *</label>
-                    <input
-                      type="date"
-                      required
-                      value={moveInDate}
-                      onChange={(e) => setMoveInDate(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium outline-none focus:border-amber-500"
-                    />
+              {/* Library Pass Duration Selection */}
+              {isLibrary && (
+                <div className="bg-sky-50/70 p-4 rounded-2xl border border-sky-300/70 space-y-3">
+                  <div className="flex items-center space-x-2 border-b border-sky-200 pb-2">
+                    <Sparkles className="h-4.5 w-4.5 text-sky-600" />
+                    <h4 className="font-bold text-sky-900 text-xs uppercase tracking-wider">
+                      Library Pass Plan & Membership Details
+                    </h4>
                   </div>
-
-                  <div>
-                    <label className="block text-slate-800 font-semibold mb-1">Expected Move-Out Date *</label>
-                    <input
-                      type="date"
-                      required
-                      value={expectedMoveOutDate}
-                      onChange={(e) => setExpectedMoveOutDate(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium outline-none focus:border-amber-500"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-800 font-semibold mb-1">Rental Duration *</label>
-                    <select
-                      value={rentalDurationType}
-                      onChange={(e) => setRentalDurationType(e.target.value as any)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 outline-none focus:border-amber-500 font-medium"
-                    >
-                      <option value="1 month">1 Month Short Stay</option>
-                      <option value="6 months">6 Months Semester</option>
-                      <option value="11 months">11 Months Standard Lease</option>
-                      <option value="Custom">Custom Flexible Lease</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-800 font-semibold mb-1">Preferred Visit Date/Time</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Tomorrow at 4:00 PM"
-                      value={preferredVisitDateTime}
-                      onChange={(e) => setPreferredVisitDateTime(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium outline-none focus:border-amber-500"
-                    />
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="block text-slate-800 font-semibold mb-1">Membership / Pass Type *</label>
+                      <div className="flex space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => setLibraryPassType('daily')}
+                          className={`flex-1 p-2.5 rounded-xl border font-bold text-xs transition-all cursor-pointer ${
+                            libraryPassType === 'daily'
+                              ? 'bg-sky-500 text-white border-sky-600 shadow-xs'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          Daily Day Pass (₹{libraryDailyRate})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLibraryPassType('monthly')}
+                          className={`flex-1 p-2.5 rounded-xl border font-bold text-xs transition-all cursor-pointer ${
+                            libraryPassType === 'monthly'
+                              ? 'bg-sky-500 text-white border-sky-600 shadow-xs'
+                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                          }`}
+                        >
+                          Monthly Pass (₹{libraryMonthlyRate})
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-slate-800 font-semibold mb-1">Access Start Date *</label>
+                      <input
+                        type="date"
+                        value={moveInDate}
+                        onChange={(e) => setMoveInDate(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold text-slate-900"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* Government ID & Passport Photo Upload Section */}
-              <div className="bg-slate-50 p-3.5 sm:p-5 rounded-2xl border border-amber-400/30 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+              {/* Commercial Appliance & Electronics Rental Schedule */}
+              {isGeneral && (
+                <div className="bg-blue-50/70 p-4 rounded-2xl border border-blue-300/70 space-y-3">
+                  <div className="flex items-center space-x-2 border-b border-blue-200 pb-2">
+                    <Zap className="h-4.5 w-4.5 text-blue-600" />
+                    <h4 className="font-bold text-blue-900 text-xs uppercase tracking-wider">
+                      Appliance Rental Tenure & Doorstep Logistics
+                    </h4>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="block text-slate-800 font-semibold mb-1">Rental Tenure *</label>
+                      <select
+                        value={applianceDurationMonths}
+                        onChange={(e) => setApplianceDurationMonths(Number(e.target.value))}
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold text-slate-900"
+                      >
+                        <option value={1}>1 Month Tenure</option>
+                        <option value={3}>3 Months Tenure (Recommended)</option>
+                        <option value={6}>6 Months Tenure (Semester/Season)</option>
+                        <option value={12}>12 Months Annual Rental</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-slate-800 font-semibold mb-1">Delivery Required Date *</label>
+                      <input
+                        type="date"
+                        value={moveInDate}
+                        onChange={(e) => setMoveInDate(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2.5 font-bold text-slate-900"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-blue-200">
+                    <label className="flex items-center space-x-2 text-xs font-bold text-slate-800 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={applianceNeedsDelivery}
+                        onChange={(e) => setApplianceNeedsDelivery(e.target.checked)}
+                        className="accent-blue-600 h-4 w-4 rounded"
+                      />
+                      <span>Doorstep Delivery & Professional Technician Installation (+₹250)</span>
+                    </label>
+                    <span className="font-mono text-blue-700 font-black text-xs">
+                      {applianceDurationMonths} mo × ₹{applianceMonthlyRent} {applianceNeedsDelivery ? '+ ₹250 Del' : ''}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Rental Period & Duration Selection (Only for Property Rentals) */}
+              {isProperty && (
+                <div className="bg-amber-50/70 p-4 rounded-2xl border border-amber-300/70 space-y-3">
+                  <div className="flex items-center justify-between border-b border-amber-200 pb-2">
+                    <div className="flex items-center space-x-2">
+                      <Calendar className="h-4.5 w-4.5 text-amber-600" />
+                      <h4 className="font-bold text-amber-900 text-xs uppercase tracking-wider">
+                        Rental Period & Duration Selection
+                      </h4>
+                    </div>
+                    <span className="text-[11px] font-bold text-amber-800 bg-amber-200/60 px-2.5 py-0.5 rounded-lg">
+                      Owner Rent: ₹{actualItemRentPrice.toLocaleString('en-IN')}/mo
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-slate-800 text-xs font-bold mb-1">Rental Duration *</label>
+                      <select
+                        value={rentalDurationType}
+                        onChange={(e) => setRentalDurationType(e.target.value as any)}
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 outline-none focus:border-amber-500 font-bold text-xs sm:text-sm"
+                      >
+                        <option value="1 month">1 Month Short Stay (Default)</option>
+                        <option value="3 months">3 Months Tenure</option>
+                        <option value="6 months">6 Months Semester</option>
+                        <option value="11 months">11 Months Standard Lease</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-800 text-xs font-bold mb-1">Move-In Date *</label>
+                      <input
+                        type="date"
+                        required
+                        value={moveInDate}
+                        onChange={(e) => setMoveInDate(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-medium outline-none focus:border-amber-500 text-xs sm:text-sm"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-800 text-xs font-bold mb-1">Expected Move-Out Date</label>
+                      <input
+                        type="date"
+                        value={expectedMoveOutDate}
+                        onChange={(e) => setExpectedMoveOutDate(e.target.value)}
+                        className="w-full bg-slate-100 border border-slate-300 rounded-xl p-2.5 text-slate-700 font-medium outline-none text-xs sm:text-sm"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-white p-3 rounded-xl border border-amber-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+                    <div className="flex items-center space-x-2 text-slate-700">
+                      <span className="font-bold text-slate-900">Duration Pricing:</span>
+                      <span>{durationMonths} Month{durationMonths > 1 ? 's' : ''} × ₹{actualItemRentPrice.toLocaleString('en-IN')}/mo</span>
+                    </div>
+                    <div className="font-mono text-amber-800 font-black">
+                      Total Rent: ₹{(durationMonths * actualItemRentPrice).toLocaleString('en-IN')}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Quick Identity Verification (Lightweight & Easy) */}
+              <div className="bg-slate-50/90 p-3.5 sm:p-4 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                   <div className="flex items-center space-x-2">
                     <FileCheck className="h-4.5 w-4.5 text-amber-500 shrink-0" />
-                    <h4 className="font-bold text-amber-700 text-xs sm:text-sm uppercase tracking-wider">
-                      KYC / Identity Verification & Document Upload
+                    <h4 className="font-bold text-slate-900 text-xs sm:text-sm uppercase tracking-wider">
+                      Quick Identity Verification (Optional)
                     </h4>
                   </div>
                   <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full">
-                    KYC Verified ✓ • Encrypted
+                    Can also show at handover
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-slate-800 font-semibold mb-1">ID Proof Type *</label>
+                    <label className="block text-slate-800 text-xs font-bold mb-1">ID Proof Type</label>
                     <select
                       value={govIdType}
                       onChange={(e) => setGovIdType(e.target.value as any)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 outline-none focus:border-amber-500 font-medium"
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 outline-none focus:border-amber-500 font-medium text-xs sm:text-sm"
                     >
                       <option value="Aadhaar Card">Aadhaar Card (UIDAI)</option>
-                      <option value="Passport">Passport</option>
                       <option value="Driving Licence">Driving Licence (RTO)</option>
+                      <option value="Passport">Passport</option>
                       <option value="Voter ID">Voter ID Card</option>
                     </select>
                   </div>
 
                   <div>
-                    <label className="block text-slate-800 font-semibold mb-1">ID Proof Number *</label>
+                    <label className="block text-slate-800 text-xs font-bold mb-1">ID Proof Number (Optional)</label>
                     <input
                       type="text"
-                      required
-                      placeholder="Enter ID number"
+                      placeholder="e.g. XXXX-XXXX-1234 (or provide at handover)"
                       value={govIdNumber}
                       onChange={(e) => setGovIdNumber(e.target.value)}
-                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-mono outline-none focus:border-amber-500 font-medium"
+                      className="w-full bg-white border border-slate-300 rounded-xl p-2.5 text-slate-900 font-mono outline-none focus:border-amber-500 font-medium text-xs sm:text-sm"
                     />
                   </div>
                 </div>
 
-                {/* Upload Box 1: ID Proof Document & Upload Box 2: Passport Photo */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-slate-800 font-semibold mb-1">Upload ID Proof (Aadhaar/DL/Passport)</label>
-                    <div className="border-2 border-dashed border-slate-300 hover:border-amber-500 rounded-2xl p-3 text-center cursor-pointer transition-colors bg-white relative">
-                      <input
-                        type="file"
-                        accept="image/*,.pdf"
-                        onChange={handleFileUpload}
-                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                      />
-                      <Upload className="h-5 w-5 text-amber-500 mx-auto mb-1" />
-                      <p className="text-slate-800 font-bold text-[11px] truncate">
-                        {idProofFileName || 'Attach ID Proof Document'}
-                      </p>
-                      <p className="text-slate-500 text-[9px]">JPG, PNG, PDF</p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-800 font-semibold mb-1">Upload Passport-Size Photo</label>
-                    <div className="border-2 border-dashed border-slate-300 hover:border-amber-500 rounded-2xl p-3 text-center cursor-pointer transition-colors bg-white relative">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            setPassportPhotoFileName(file.name);
-                            const reader = new FileReader();
-                            reader.onloadend = () => setPassportPhotoPreview(reader.result as string);
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                      />
-                      <User className="h-5 w-5 text-amber-500 mx-auto mb-1" />
-                      <p className="text-slate-800 font-bold text-[11px] truncate">
-                        {passportPhotoFileName || 'Attach Tenant Photo'}
-                      </p>
-                      <p className="text-slate-500 text-[9px]">Clear Face Passport Photo</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Important Sensitive ID Security & Privacy Note */}
-                <div className="bg-amber-50 p-3 rounded-xl border border-amber-300/80 flex items-start space-x-2 text-[11px] text-amber-900">
-                  <ShieldCheck className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-                  <p className="leading-snug">
-                    <strong className="font-bold">Privacy Protection Note:</strong> Sensitive identity data (such as Aadhaar/Passport) is 256-bit AES encrypted and processed strictly per Indian Privacy Regulations. Data is stored securely and never shared publicly.
-                  </p>
+                <div className="bg-emerald-50 p-2.5 rounded-xl border border-emerald-200 flex items-center space-x-2 text-[11px] text-emerald-900">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>Physical original ID can simply be inspected by host during key or asset handover. No upload required!</span>
                 </div>
               </div>
 
@@ -1417,45 +1835,236 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                 </span>
               </div>
 
-              {/* 1. Auto-filled Property Details Summary Card */}
+              {/* 1. Auto-filled Listing Details Summary Card */}
               <div className="bg-amber-50/60 p-4 rounded-2xl border border-amber-300/60 space-y-2.5 text-xs">
                 <h5 className="font-bold text-amber-900 text-xs uppercase tracking-wider flex items-center space-x-1.5 border-b border-amber-200/80 pb-2">
                   <Building2 className="h-4 w-4 text-amber-600" />
-                  <span>1. Auto-Filled Listing Details</span>
+                  <span>1. Auto-Filled Listing Details ({item.category.toUpperCase()})</span>
                 </h5>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-                  <div>
-                    <span className="text-slate-500 font-medium block text-[10px] uppercase">Property Title</span>
-                    <strong className="text-slate-900 font-bold block">{item.title}</strong>
+                {isHotel ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Hotel / Resort</span>
+                      <strong className="text-slate-900 font-bold block">{item.title}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Location</span>
+                      <strong className="text-slate-900 font-bold block truncate">{item.location}, {item.city}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Room Type & Rooms</span>
+                      <strong className="text-slate-900 font-bold block">{hotelRoomType} ({hotelRoomsCount} Room)</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Stay Duration</span>
+                      <strong className="text-slate-900 font-bold block">{calculatedHotelNights} Night(s) ({checkInDate} to {checkOutDate})</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Check-In / Out</span>
+                      <strong className="text-emerald-700 font-bold block">12:00 PM Check-In / 11:00 AM Check-Out</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Host / Front Desk</span>
+                      <strong className="text-slate-900 font-bold block">{item.ownerName}</strong>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-slate-500 font-medium block text-[10px] uppercase">Full Address</span>
-                    <strong className="text-slate-900 font-bold block truncate">{item.fullAddress || `${item.location}, ${item.city}`}</strong>
+                ) : isRestaurant ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Restaurant / Cafe</span>
+                      <strong className="text-slate-900 font-bold block">{item.title}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Location</span>
+                      <strong className="text-slate-900 font-bold block truncate">{item.location}, {item.city}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Table Reserved</span>
+                      <strong className="text-slate-900 font-bold block">{restaurantTableType}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Dining Time Slot</span>
+                      <strong className="text-amber-800 font-bold block">{restaurantTimeSlot}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Number of Diners</span>
+                      <strong className="text-slate-900 font-bold block">{occupantsCount} Guest(s)</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Host / Maitre D'</span>
+                      <strong className="text-slate-900 font-bold block">{item.ownerName}</strong>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-slate-500 font-medium block text-[10px] uppercase">Room Type</span>
-                    <strong className="text-slate-900 font-bold block">{item.subType || 'PG / 1BHK Room'}</strong>
+                ) : isSportsTurf ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Turf / Arena Name</span>
+                      <strong className="text-slate-900 font-bold block">{item.title}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Location</span>
+                      <strong className="text-slate-900 font-bold block truncate">{item.location}, {item.city}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Selected Slot</span>
+                      <strong className="text-slate-900 font-bold block">{turfTimeSlot}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Playing Duration</span>
+                      <strong className="text-emerald-700 font-bold block">{turfDurationHours} Hours</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Sports Kit / Gear</span>
+                      <strong className="text-slate-900 font-bold block">{turfIncludeGear ? 'Included (Balls, Bibs)' : 'Standard'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Facility Host</span>
+                      <strong className="text-slate-900 font-bold block">{item.ownerName}</strong>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-slate-500 font-medium block text-[10px] uppercase">Furnished Status</span>
-                    <strong className="text-slate-900 font-bold block">{item.furnishing || 'Semi-Furnished'}</strong>
+                ) : isLibrary ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Library / Study Hub</span>
+                      <strong className="text-slate-900 font-bold block">{item.title}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Location</span>
+                      <strong className="text-slate-900 font-bold block truncate">{item.location}, {item.city}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Membership Type</span>
+                      <strong className="text-slate-900 font-bold block">{libraryPassType === 'daily' ? 'Daily Pass' : 'Monthly Membership'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Allocated Seat / Cabin</span>
+                      <strong className="text-amber-800 font-bold block">Seat {selectedSeat} (Reserved)</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Study Hours</span>
+                      <strong className="text-emerald-700 font-bold block">06:00 AM - 11:00 PM (Silent AC Zone)</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Library Host</span>
+                      <strong className="text-slate-900 font-bold block">{item.ownerName}</strong>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-slate-500 font-medium block text-[10px] uppercase">Available From</span>
-                    <strong className="text-emerald-700 font-bold block">{item.availableFrom || 'Immediately'}</strong>
+                ) : isGeneral ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Appliance / Item</span>
+                      <strong className="text-slate-900 font-bold block">{item.title}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Hub Location</span>
+                      <strong className="text-slate-900 font-bold block truncate">{item.location}, {item.city}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Rental Tenure</span>
+                      <strong className="text-slate-900 font-bold block">{applianceDurationMonths} Month(s)</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Logistics & Setup</span>
+                      <strong className="text-emerald-700 font-bold block">{applianceNeedsDelivery ? 'Doorstep Delivery & Technician Setup' : 'Self Pickup'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Appliance Condition</span>
+                      <strong className="text-slate-900 font-bold block">Tested & Verified ✓</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Supplier / Vendor</span>
+                      <strong className="text-slate-900 font-bold block">{item.ownerName}</strong>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-slate-500 font-medium block text-[10px] uppercase">Electricity & Water</span>
-                    <strong className="text-slate-900 font-bold block">As per Govt Meter / Included</strong>
+                ) : isVehicle ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Vehicle Name</span>
+                      <strong className="text-slate-900 font-bold block">{item.title}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Pickup Hub</span>
+                      <strong className="text-slate-900 font-bold block truncate">{pickupLocation}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Rental Mode</span>
+                      <strong className="text-slate-900 font-bold block uppercase">{vehicleRentalMode} ({vehicleRentalMode === 'hourly' ? `${totalCalculatedHours} Hours` : `${totalVehicleDays} Days`})</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Schedule</span>
+                      <strong className="text-slate-900 font-bold block">{pickupDate} → {returnDate}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Driving License</span>
+                      <strong className="text-emerald-700 font-bold block font-mono">{drivingLicense || 'Verified on Pickup'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Fleet Host</span>
+                      <strong className="text-slate-900 font-bold block">{item.ownerName}</strong>
+                    </div>
                   </div>
-                </div>
+                ) : isClothing ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Outfit Title</span>
+                      <strong className="text-slate-900 font-bold block">{item.title}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Boutique</span>
+                      <strong className="text-slate-900 font-bold block truncate">{item.ownerName}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Selected Size</span>
+                      <strong className="text-slate-900 font-bold block">{clothingSizeSelection} (Fitted)</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Rental Duration</span>
+                      <strong className="text-slate-900 font-bold block">{totalClothingDays} Days ({pickupDate} to {returnDate})</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Delivery Mode</span>
+                      <strong className="text-emerald-700 font-bold block">{deliveryMethod === 'home_delivery' ? 'Sanitized Home Delivery' : 'Boutique Pickup'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Hygiene Assurance</span>
+                      <strong className="text-emerald-700 font-bold block">Steam Cleaned & Sealed ✓</strong>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Property Title</span>
+                      <strong className="text-slate-900 font-bold block">{item.title}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Full Address</span>
+                      <strong className="text-slate-900 font-bold block truncate">{item.fullAddress || `${item.location}, ${item.city}`}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Room Type</span>
+                      <strong className="text-slate-900 font-bold block">{item.subType || (item.category === 'student' ? 'PG Shared Room' : '1BHK / 2BHK Room')}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Furnished Status</span>
+                      <strong className="text-slate-900 font-bold block">{item.furnishing || 'Semi-Furnished'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Available From</span>
+                      <strong className="text-emerald-700 font-bold block">{item.availableFrom || 'Immediately'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-medium block text-[10px] uppercase">Electricity & Water</span>
+                      <strong className="text-slate-900 font-bold block">As per Govt Meter / Included</strong>
+                    </div>
+                  </div>
+                )}
 
                 {/* Amenities Pills */}
                 <div className="pt-2 border-t border-amber-200/80">
                   <span className="text-slate-500 font-medium block text-[10px] uppercase mb-1">Included Amenities</span>
                   <div className="flex flex-wrap gap-1.5">
-                    {(item.amenities && item.amenities.length > 0 ? item.amenities : ['Wi-Fi', 'AC', 'Parking', 'Kitchen', 'Attached Bathroom']).map((am, i) => (
+                    {(item.amenities && item.amenities.length > 0 ? item.amenities : ['Wi-Fi', 'AC', 'Parking', 'RO Water']).map((am, i) => (
                       <span key={i} className="bg-white text-slate-800 border border-amber-300 px-2 py-0.5 rounded text-[10px] font-bold">
                         ✓ {am}
                       </span>
@@ -1468,7 +2077,7 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
               <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200 space-y-3 text-xs">
                 <h5 className="font-bold text-slate-900 text-xs uppercase tracking-wider flex items-center space-x-1.5 border-b border-slate-200 pb-2">
                   <Lock className="h-4 w-4 text-amber-500" />
-                  <span>2. Payment & Initial Handover Cost Breakdown</span>
+                  <span>2. Payment & Handover Cost Breakdown</span>
                 </h5>
 
                 <div className="space-y-2">
@@ -1510,9 +2119,9 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                     <>
                       <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
                         <span className="text-slate-700 font-bold">
-                          Vehicle Rent ({vehicleRentalMode === 'hourly' ? `${totalCalculatedHours} hrs × ₹${vehicleHourlyRate}` : 'Daily Rate'}):
+                          Vehicle Rent ({vehicleRentalMode === 'hourly' ? `${totalCalculatedHours} hrs × ${formatINR(vehicleHourlyRate)}` : `${totalVehicleDays} days × ${formatINR(vehicleDailyRate)}`}):
                         </span>
-                        <span className="font-bold text-slate-900 text-sm font-mono">₹{calculatedVehicleRentCost.toLocaleString('en-IN')}</span>
+                        <span className="font-bold text-slate-900 text-sm font-mono">{formatINR(calculatedVehicleRentCost)}</span>
                       </div>
 
                       <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
@@ -1520,44 +2129,201 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                           <span className="text-slate-700 font-bold block">Security Deposit (Refundable at Return):</span>
                           <span className="text-[10px] text-emerald-700 font-bold">✓ Separately held (NOT included in rent)</span>
                         </div>
-                        <span className="font-bold text-slate-800 font-mono text-sm">₹{(item.deposit || 2000).toLocaleString('en-IN')}</span>
+                        <span className="font-bold text-slate-800 font-mono text-sm">{formatINR(actualItemDeposit)}</span>
                       </div>
 
                       <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
                         <span className="text-amber-800 font-bold">Priority Booking Escrow Token (Payable Now):</span>
-                        <span className="font-mono font-black text-amber-700 text-sm">₹{tokenAmount}</span>
+                        <span className="font-mono font-black text-amber-700 text-sm">{formatINR(tokenAmount)}</span>
                       </div>
 
                       <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
                         <span className="text-slate-600 font-semibold">Platform Verification Fee:</span>
-                        <span className="font-bold text-slate-800">₹{platformFee}</span>
+                        <span className="font-bold text-slate-800">{formatINR(platformFee)}</span>
+                      </div>
+                    </>
+                  ) : isHotel ? (
+                    <>
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <span className="text-slate-700 font-bold">
+                          Room Tariff ({calculatedHotelNights} Night(s) × {hotelRoomsCount} Room(s) × {formatINR(hotelRoomPrice)}):
+                        </span>
+                        <span className="font-bold text-slate-900 text-sm font-mono">{formatINR(hotelBaseTariff)}</span>
+                      </div>
+
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <div>
+                          <span className="text-slate-700 font-bold block">Hotel GST & Service Tax (12%):</span>
+                          <span className="text-[10px] text-emerald-700 font-bold">✓ Standard statutory hospitality tax</span>
+                        </div>
+                        <span className="font-bold text-slate-800 font-mono text-sm">{formatINR(hotelGst)}</span>
+                      </div>
+
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <span className="text-amber-800 font-bold">Priority Reservation Token (Payable Now):</span>
+                        <span className="font-mono font-black text-amber-700 text-sm">{formatINR(tokenAmount)}</span>
+                      </div>
+
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <span className="text-slate-600 font-semibold">Platform Escrow Verification Fee:</span>
+                        <span className="font-bold text-slate-800">{formatINR(platformFee)}</span>
+                      </div>
+                    </>
+                  ) : isRestaurant ? (
+                    <>
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <span className="text-slate-700 font-bold">
+                          Table Reservation for {occupantsCount} Guest(s) ({restaurantTimeSlot}):
+                        </span>
+                        <span className="font-bold text-emerald-700 text-sm">Table Hold Confirmed</span>
+                      </div>
+
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <div>
+                          <span className="text-slate-700 font-bold block">Estimated Average Dining Cost:</span>
+                          <span className="text-[10px] text-slate-500 font-bold">Bill paid directly at restaurant after dining</span>
+                        </div>
+                        <span className="font-bold text-slate-800 font-mono text-sm">{formatINR(restaurantAvgCost)}</span>
+                      </div>
+
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <span className="text-amber-800 font-bold">Priority Table Reservation Token (Payable Now):</span>
+                        <span className="font-mono font-black text-amber-700 text-sm">{formatINR(Math.min(tokenAmount, 200))}</span>
+                      </div>
+
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <span className="text-slate-600 font-semibold">Platform Reservation Fee:</span>
+                        <span className="font-bold text-slate-800">{formatINR(platformFee)}</span>
+                      </div>
+                    </>
+                  ) : isSportsTurf ? (
+                    <>
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <span className="text-slate-700 font-bold">
+                          Turf Arena Hire ({turfDurationHours} Hours × {formatINR(turfHourlyRate)}/hr):
+                        </span>
+                        <span className="font-bold text-slate-900 text-sm font-mono">{formatINR(turfDurationHours * turfHourlyRate)}</span>
+                      </div>
+
+                      {turfGearCost > 0 && (
+                        <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                          <span className="text-slate-700 font-bold">Match Balls, Bibs & Equipment:</span>
+                          <span className="font-bold text-slate-800 font-mono">₹{turfGearCost}</span>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <span className="text-amber-800 font-bold">Slot Priority Token (Payable Now):</span>
+                        <span className="font-mono font-black text-amber-700 text-sm">{formatINR(tokenAmount)}</span>
+                      </div>
+
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <span className="text-slate-600 font-semibold">Platform Verification Fee:</span>
+                        <span className="font-bold text-slate-800">{formatINR(platformFee)}</span>
+                      </div>
+                    </>
+                  ) : isLibrary ? (
+                    <>
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <span className="text-slate-700 font-bold">
+                          Library Access Plan ({libraryPassType === 'daily' ? '1 Day Study Pass' : 'Monthly Membership'}):
+                        </span>
+                        <span className="font-bold text-slate-900 text-sm font-mono">{formatINR(calculatedLibraryTotal)}</span>
+                      </div>
+
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <span className="text-slate-700 font-bold">Allocated Desk Light & Wi-Fi:</span>
+                        <span className="font-bold text-emerald-700">Included Free ✓</span>
+                      </div>
+
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <span className="text-amber-800 font-bold">Seat Hold Token (Payable Now):</span>
+                        <span className="font-mono font-black text-amber-700 text-sm">{formatINR(tokenAmount)}</span>
+                      </div>
+
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <span className="text-slate-600 font-semibold">Platform Registration Fee:</span>
+                        <span className="font-bold text-slate-800">{formatINR(platformFee)}</span>
+                      </div>
+                    </>
+                  ) : isGeneral ? (
+                    <>
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <span className="text-slate-700 font-bold">
+                          Appliance Rent ({applianceDurationMonths} Months × {formatINR(applianceMonthlyRent)}/mo):
+                        </span>
+                        <span className="font-bold text-slate-900 text-sm font-mono">{formatINR(applianceDurationMonths * applianceMonthlyRent)}</span>
+                      </div>
+
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <div>
+                          <span className="text-slate-700 font-bold block">Security Deposit (100% Refundable):</span>
+                          <span className="text-[10px] text-emerald-700 font-bold">✓ Refunded upon return pickup</span>
+                        </div>
+                        <span className="font-bold text-slate-800 font-mono text-sm">{formatINR(applianceDeposit)}</span>
+                      </div>
+
+                      {applianceDeliveryFee > 0 && (
+                        <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                          <span className="text-slate-700 font-bold">Doorstep Delivery & Technician Installation:</span>
+                          <span className="font-bold text-slate-800 font-mono">₹{applianceDeliveryFee}</span>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <span className="text-amber-800 font-bold">Priority Booking Escrow Token (Payable Now):</span>
+                        <span className="font-mono font-black text-amber-700 text-sm">{formatINR(tokenAmount)}</span>
+                      </div>
+
+                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                        <span className="text-slate-600 font-semibold">Platform Verification Fee:</span>
+                        <span className="font-bold text-slate-800">{formatINR(platformFee)}</span>
                       </div>
                     </>
                   ) : (
                     <>
                       <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
-                        <span className="text-slate-600 font-semibold">Monthly Rent:</span>
-                        <span className="font-bold text-slate-900 text-sm">₹{item.price.toLocaleString('en-IN')} / month</span>
+                        <div>
+                          <span className="text-slate-600 font-semibold block">
+                            Rent ({durationMonths} Month{durationMonths > 1 ? 's' : ''} Tenure):
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-bold">
+                            {durationMonths} × {formatINR(actualItemRentPrice)}/mo (Owner Listed Rent)
+                          </span>
+                        </div>
+                        <span className="font-bold text-slate-900 text-sm font-mono">{formatINR(actualItemRentPrice * durationMonths)}</span>
                       </div>
 
                       <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
-                        <span className="text-slate-600 font-semibold">Refundable Security Deposit (To Host):</span>
-                        <span className="font-bold text-slate-800">₹{(item.deposit || item.price * 2).toLocaleString('en-IN')}</span>
+                        <div>
+                          <span className="text-slate-600 font-semibold block">Refundable Security Deposit (To Host):</span>
+                          <span className="text-[10px] text-emerald-700 font-bold">✓ 100% Refundable at move-out (held safely)</span>
+                        </div>
+                        <span className="font-bold text-slate-800 font-mono text-sm">{formatINR(actualItemDeposit)}</span>
                       </div>
 
-                      <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
-                        <span className="text-slate-600 font-semibold">Maintenance Charges:</span>
-                        <span className="font-bold text-slate-800">₹1,000 / month</span>
-                      </div>
+                      {propertyMaintenanceCharges > 0 ? (
+                        <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                          <span className="text-slate-600 font-semibold">
+                            Maintenance Charges ({durationMonths} mo × {formatINR(propertyMaintenanceCharges)}/mo):
+                          </span>
+                          <span className="font-bold text-slate-800 font-mono">{formatINR(propertyMaintenanceCharges * durationMonths)}</span>
+                        </div>
+                      ) : (
+                        <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
+                          <span className="text-slate-600 font-semibold">Maintenance Charges:</span>
+                          <span className="font-bold text-emerald-700 font-mono">All-Inclusive (₹0)</span>
+                        </div>
+                      )}
 
                       <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
                         <span className="text-amber-800 font-bold">Escrow Priority Token Amount (Payable Now):</span>
-                        <span className="font-mono font-black text-amber-700 text-sm">₹{tokenAmount}</span>
+                        <span className="font-mono font-black text-amber-700 text-sm">{formatINR(tokenAmount)}</span>
                       </div>
 
                       <div className="flex justify-between items-center pb-1.5 border-b border-slate-200">
                         <span className="text-slate-600 font-semibold">Platform Escrow Verification Fee:</span>
-                        <span className="font-bold text-slate-800">₹{platformFee}</span>
+                        <span className="font-bold text-slate-800">{formatINR(platformFee)}</span>
                       </div>
                     </>
                   )}
@@ -1566,43 +2332,168 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
                     <div className="bg-slate-100 p-3 rounded-xl border border-slate-200">
                       <span className="text-[10px] text-slate-500 uppercase font-bold block">
-                        {isClothing ? 'Total Balance Payable at Handover' : isVehicle ? 'Total Balance Payable at Pickup Hub' : 'Total Initial Payment at Move-In'}
+                        {isClothing
+                          ? 'Balance Payable at Handover'
+                          : isVehicle
+                          ? 'Balance Payable at Pickup Hub'
+                          : isHotel
+                          ? 'Balance Due at Check-In'
+                          : isRestaurant
+                          ? 'Estimated Dining Order Balance'
+                          : isSportsTurf
+                          ? 'Balance Payable at Turf Entry'
+                          : isLibrary
+                          ? 'Balance Due at Library Desk'
+                          : isGeneral
+                          ? 'Balance Due at Delivery'
+                          : `Total Move-In Balance (${durationMonths} Mo)`}
                       </span>
                       <span className="text-base font-black text-slate-900 font-mono">
-                        ₹{(isClothing ? calculatedClothingRentCost + clothingDeposit : isVehicle ? calculatedVehicleRentCost + (item.deposit || 2000) : item.price + (item.deposit || item.price * 2) + 1000).toLocaleString('en-IN')}
+                        {formatINR(balanceDueAtHandover)}
                       </span>
                     </div>
 
                     <div className="bg-amber-500/10 p-3 rounded-xl border border-amber-400/40">
                       <span className="text-[10px] text-amber-900 uppercase font-bold block">Token Payable Now (Escrow Locked)</span>
                       <span className="text-lg font-black text-amber-700 font-mono">
-                        ₹{payableNowTotal.toLocaleString('en-IN')}
+                        {formatINR(payableNowTotal)}
                       </span>
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* 3. Agreement & Rules Checklist */}
-              <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-amber-400/30 space-y-3">
-                <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider flex items-center space-x-2 border-b border-slate-200 pb-2">
-                  <ShieldCheck className="h-4 w-4 text-amber-500" />
-                  <span>3. Agreement Terms, Rules & Policies</span>
-                </h4>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] text-slate-700 font-medium pb-2 border-b border-slate-200">
-                  <div className="bg-white p-2 rounded-lg border border-slate-200">
-                    <strong className="text-slate-900 block font-bold">• Notice Period:</strong> 30 Days advance notice required prior to move-out.
-                  </div>
-                  <div className="bg-white p-2 rounded-lg border border-slate-200">
-                    <strong className="text-slate-900 block font-bold">• Security Deposit Policy:</strong> 100% Refundable at lease exit.
-                  </div>
-                  <div className="bg-white p-2 rounded-lg border border-slate-200">
-                    <strong className="text-slate-900 block font-bold">• Pet & Guest Policy:</strong> Guests allowed till 10 PM. Subject to host rules.
-                  </div>
-                  <div className="bg-white p-2 rounded-lg border border-slate-200">
-                    <strong className="text-emerald-700 block font-bold">• 100% Refund Guarantee:</strong> Instant token refund if host declines within 24h.
-                  </div>
+              {/* 3. Category Rules & Agreement Terms Card */}
+              <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-slate-200 space-y-3">
+                <div className="flex items-center space-x-2 border-b border-slate-200 pb-2">
+                  <ShieldCheck className="h-4.5 w-4.5 text-amber-500 shrink-0" />
+                  <h5 className="font-bold text-slate-900 text-xs uppercase tracking-wider">
+                    3. Booking Terms & Handover Protocols
+                  </h5>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-slate-700">
+                  {isHotel ? (
+                    <>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Check-In Timing:</strong> Standard 12:00 PM check-in; late check-in allowed with notice.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Guest ID Verification:</strong> Valid Govt ID for all staying adult guests required at reception.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Hotel House Rules:</strong> Outside food/beverages subject to hotel policy.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-emerald-700 block font-bold">• 100% Refund Guarantee:</strong> Instant refund if booking is not confirmed by hotel.
+                      </div>
+                    </>
+                  ) : isRestaurant ? (
+                    <>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Table Grace Period:</strong> Table held for 15 minutes from reservation time.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Bill Adjustment:</strong> Token reservation advance fully adjusted in food bill.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Dietary / Seating:</strong> Seating preferences accommodated on arrival.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-emerald-700 block font-bold">• Instant Cancellation:</strong> Cancel anytime 2 hours before slot for full refund.
+                      </div>
+                    </>
+                  ) : isSportsTurf ? (
+                    <>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Footwear Policy:</strong> Non-marking turf shoes or rubber studs mandatory.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Punctuality:</strong> Arrive 10 minutes prior to slot start time.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Weather Reschedule:</strong> Free reschedule in case of heavy rain or storms.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-emerald-700 block font-bold">• 100% Refund Guarantee:</strong> Instant refund if arena is unavailable.
+                      </div>
+                    </>
+                  ) : isLibrary ? (
+                    <>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Silence Policy:</strong> Strict pin-drop silence in reading halls at all times.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Personal Desk:</strong> Fixed desk light, charging port and ergonomic chair.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Facilities:</strong> High-speed optical Wi-Fi & chilled RO water included.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-emerald-700 block font-bold">• Easy Transfer:</strong> Monthly pass can be paused or transferred if needed.
+                      </div>
+                    </>
+                  ) : isGeneral ? (
+                    <>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Voltage & Care:</strong> Recommended to connect with stabilizer or surge protector.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Free Maintenance:</strong> Free technician servicing for any normal wear/tear.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• 100% Deposit Return:</strong> Full deposit refunded on return inspection.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-emerald-700 block font-bold">• Free Replacement:</strong> Immediate unit replacement if defective on delivery.
+                      </div>
+                    </>
+                  ) : isVehicle ? (
+                    <>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Driving License:</strong> Original valid Driving License mandatory at pickup.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Fuel Policy:</strong> Same-to-same fuel level return policy.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Zero Tolerance:</strong> Strictly no drunk driving; speed limits enforced by GPS.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-emerald-700 block font-bold">• Security Deposit:</strong> Refunded immediately after vehicle dropoff check.
+                      </div>
+                    </>
+                  ) : isClothing ? (
+                    <>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Care & Handling:</strong> Keep outfit safely in garment bag provided.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Dry Cleaning:</strong> Professional dry-cleaning is included; do not wash at home.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Alteration Policy:</strong> Temporary basting stitch allowed; no fabric cutting.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-emerald-700 block font-bold">• Security Deposit:</strong> 100% Refundable upon timely garment return.
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Notice Period:</strong> 30 Days advance notice required prior to move-out.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Security Deposit Policy:</strong> 100% Refundable at lease exit.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-slate-900 block font-bold">• Pet & Guest Policy:</strong> Guests allowed till 10 PM. Subject to host rules.
+                      </div>
+                      <div className="bg-white p-2 rounded-lg border border-slate-200">
+                        <strong className="text-emerald-700 block font-bold">• 100% Refund Guarantee:</strong> Instant token refund if host declines within 24h.
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <label className="flex items-start space-x-3 cursor-pointer p-2.5 rounded-xl hover:bg-slate-100 transition-colors border border-transparent">
@@ -1613,7 +2504,7 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                     className="mt-1 h-4 w-4 rounded accent-amber-500 cursor-pointer shrink-0"
                   />
                   <span className="text-slate-800 text-xs leading-relaxed font-medium">
-                    I confirm that all personal details, government identity proof (<strong className="text-slate-900">{govIdType}: {govIdNumber}</strong>), and contact details provided are genuine and accurate.
+                    I confirm that all personal details, government identity proof (<strong className="text-slate-900">{govIdType}: {govIdNumber || 'To be verified at handover'}</strong>), and contact details provided are genuine and accurate.
                   </span>
                 </label>
 
@@ -1625,7 +2516,7 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                     className="mt-1 h-4 w-4 rounded accent-amber-500 cursor-pointer shrink-0"
                   />
                   <span className="text-slate-800 text-xs leading-relaxed font-medium">
-                    I agree to Recko India's <strong className="text-amber-700">Rental Terms & Conditions</strong>, Notice Period, Pet/Guest Policy, and 100% Refundable Token Policy.
+                    I agree to Recko India's <strong className="text-amber-700">Rental Terms & Conditions</strong>, Category Policies, and 100% Refundable Token Policy.
                   </span>
                 </label>
               </div>
@@ -1675,7 +2566,7 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                     className="mt-1 h-4 w-4 rounded accent-amber-500 cursor-pointer shrink-0"
                   />
                   <span className="text-slate-800 text-xs leading-relaxed font-medium">
-                    I confirm that all personal details, government identity proof (<strong className="text-slate-900">{govIdType}: {govIdNumber}</strong>), and contact details provided are genuine and accurate.
+                    I confirm that all personal details, government identity proof (<strong className="text-slate-900">{govIdType}: {govIdNumber || 'To be verified at handover'}</strong>), and contact details provided are genuine and accurate.
                   </span>
                 </label>
 
@@ -1724,20 +2615,41 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                   </div>
                 </div>
 
-                {/* 4 Payment Options Tabs */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                {/* 5 Payment Options Tabs */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('razorpay')}
+                    className={`p-2.5 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
+                      paymentMethod === 'razorpay'
+                        ? 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white border-blue-400 font-bold shadow-lg scale-[1.02]'
+                        : 'bg-white border-blue-300 text-blue-900 hover:border-blue-500'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <Zap className={`h-4.5 w-4.5 ${paymentMethod === 'razorpay' ? 'text-amber-300' : 'text-blue-600'}`} />
+                      <span className="text-[9px] bg-amber-400 text-slate-950 font-black px-1.5 py-0.2 rounded uppercase">Fast</span>
+                    </div>
+                    <div>
+                      <span className="font-extrabold block text-xs">Razorpay ⚡</span>
+                      <span className={`text-[10px] ${paymentMethod === 'razorpay' ? 'text-blue-100 font-medium' : 'text-slate-500'}`}>
+                        UPI, Cards, Banking
+                      </span>
+                    </div>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('upi')}
-                    className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
+                    className={`p-2.5 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
                       paymentMethod === 'upi'
                         ? 'bg-slate-900 text-amber-400 border-amber-400 font-bold shadow-md'
                         : 'bg-white border-slate-300 text-slate-700 hover:border-amber-400'
                     }`}
                   >
-                    <QrCode className={`h-5 w-5 mb-1.5 ${paymentMethod === 'upi' ? 'text-amber-400' : 'text-amber-500'}`} />
+                    <QrCode className={`h-4.5 w-4.5 mb-1 ${paymentMethod === 'upi' ? 'text-amber-400' : 'text-amber-500'}`} />
                     <div>
-                      <span className="font-bold block text-xs">UPI / QR Code</span>
+                      <span className="font-bold block text-xs">Owner QR Code</span>
                       <span className={`text-[10px] ${paymentMethod === 'upi' ? 'text-slate-300 font-medium' : 'text-slate-500'}`}>
                         GPay, PhonePe, Paytm
                       </span>
@@ -1747,13 +2659,13 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('card')}
-                    className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
+                    className={`p-2.5 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
                       paymentMethod === 'card'
                         ? 'bg-slate-900 text-amber-400 border-amber-400 font-bold shadow-md'
                         : 'bg-white border-slate-300 text-slate-700 hover:border-amber-400'
                     }`}
                   >
-                    <CreditCard className={`h-5 w-5 mb-1.5 ${paymentMethod === 'card' ? 'text-amber-400' : 'text-amber-500'}`} />
+                    <CreditCard className={`h-4.5 w-4.5 mb-1 ${paymentMethod === 'card' ? 'text-amber-400' : 'text-amber-500'}`} />
                     <div>
                       <span className="font-bold block text-xs">Debit / Credit</span>
                       <span className={`text-[10px] ${paymentMethod === 'card' ? 'text-slate-300 font-medium' : 'text-slate-500'}`}>
@@ -1765,13 +2677,13 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('netbanking')}
-                    className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
+                    className={`p-2.5 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
                       paymentMethod === 'netbanking'
                         ? 'bg-slate-900 text-amber-400 border-amber-400 font-bold shadow-md'
                         : 'bg-white border-slate-300 text-slate-700 hover:border-amber-400'
                     }`}
                   >
-                    <Building2 className={`h-5 w-5 mb-1.5 ${paymentMethod === 'netbanking' ? 'text-amber-400' : 'text-amber-500'}`} />
+                    <Building2 className={`h-4.5 w-4.5 mb-1 ${paymentMethod === 'netbanking' ? 'text-amber-400' : 'text-amber-500'}`} />
                     <div>
                       <span className="font-bold block text-xs">Net Banking</span>
                       <span className={`text-[10px] ${paymentMethod === 'netbanking' ? 'text-slate-300 font-medium' : 'text-slate-500'}`}>
@@ -1783,13 +2695,13 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('wallet')}
-                    className={`p-3 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
+                    className={`p-2.5 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
                       paymentMethod === 'wallet'
                         ? 'bg-slate-900 text-amber-400 border-amber-400 font-bold shadow-md'
                         : 'bg-white border-slate-300 text-slate-700 hover:border-amber-400'
                     }`}
                   >
-                    <Wallet className={`h-5 w-5 mb-1.5 ${paymentMethod === 'wallet' ? 'text-amber-400' : 'text-amber-500'}`} />
+                    <Wallet className={`h-4.5 w-4.5 mb-1 ${paymentMethod === 'wallet' ? 'text-amber-400' : 'text-amber-500'}`} />
                     <div>
                       <span className="font-bold block text-xs">Recko Wallet</span>
                       <span className={`text-[10px] ${paymentMethod === 'wallet' ? 'text-slate-300 font-medium' : 'text-slate-500'}`}>
@@ -1798,6 +2710,48 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                     </div>
                   </button>
                 </div>
+
+                {/* 0. Official Razorpay Payment Interface */}
+                {paymentMethod === 'razorpay' && (
+                  <div className="bg-gradient-to-br from-blue-950 via-indigo-950 to-slate-950 p-5 rounded-2xl border-2 border-blue-400 text-white space-y-4 shadow-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <Zap className="h-6 w-6 text-amber-400 fill-amber-400 animate-pulse" />
+                        <div>
+                          <h4 className="font-extrabold text-sm text-white">Razorpay 1-Click Instant Gateway</h4>
+                          <p className="text-[11px] text-blue-200">Supports GPay, PhonePe, Paytm, Cards & All Bank Netbanking</p>
+                        </div>
+                      </div>
+                      <span className="bg-emerald-500 text-slate-950 font-black text-[10px] px-2.5 py-1 rounded-full uppercase tracking-wider shadow-sm">
+                        Live 256-Bit Encrypted
+                      </span>
+                    </div>
+
+                    <div className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/20 space-y-2">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-blue-200">Refundable Escrow Token:</span>
+                        <span className="font-mono font-black text-amber-300 text-base">₹{payableNowTotal}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-blue-200">Verified Recipient Host:</span>
+                        <span className="font-semibold text-white">{item.ownerName || 'Verified Asset Landlord'}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-blue-200">Customer Mobile:</span>
+                        <span className="font-mono text-white">{phone || 'Primary Contact'}</span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handlePayWithRazorpay}
+                      className="w-full bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black py-3.5 px-6 rounded-xl shadow-xl text-sm transition-all cursor-pointer flex items-center justify-center space-x-2 border border-amber-300 hover:scale-[1.01]"
+                    >
+                      <Lock className="h-4 w-4 stroke-[3]" />
+                      <span>Pay Token ₹{payableNowTotal} via Razorpay Checkout ⚡</span>
+                    </button>
+                  </div>
+                )}
 
                 {/* 1. UPI Payment Interface */}
                 {paymentMethod === 'upi' && (
@@ -1876,18 +2830,30 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
 
                     {/* Real Dynamic NPCI QR Code & VPA Display */}
                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-black text-slate-800 flex items-center space-x-1.5">
+                          <ShieldCheck className="h-4 w-4 text-emerald-600" />
+                          <span>{item.ownerUpiId ? `Direct Owner UPI Payment Gateway: ${item.ownerName}` : 'Recko Verified Escrow Gateway'}</span>
+                        </span>
+                        <span className="bg-amber-400/20 text-amber-900 border border-amber-400 px-2 py-0.5 rounded-full text-[10px] font-black font-mono">
+                          Token Payable: ₹{payableNowTotal}
+                        </span>
+                      </div>
+
                       <div className="flex flex-col sm:flex-row items-center gap-4">
                         <div className="relative shrink-0">
                           <img
-                            src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(
-                              `upi://pay?pa=recko.escrow@okhdfcbank&pn=Recko%20India%20Escrow&tr=RCK-${Date.now()}&am=${payableNowTotal}&cu=INR&tn=Recko%20Token%20for%20${encodeURIComponent(item.title)}`
-                            )}&color=0f172a&bgcolor=ffffff`}
-                            alt="Recko Real NPCI UPI QR Code"
-                            className="h-32 w-32 object-contain bg-white p-2 rounded-2xl border-2 border-amber-400 shadow-lg"
+                            src={
+                              item.ownerQrUrl ||
+                              getAdminPaymentConfig().qrUrl
+                            }
+                            alt="Official Admin Payment QR Code"
+                            className="h-36 w-36 object-contain bg-white p-2 rounded-2xl border-2 border-amber-400 shadow-lg"
+                            referrerPolicy="no-referrer"
                           />
                           <div className="absolute -bottom-2 inset-x-0 flex justify-center">
                             <span className="bg-emerald-500 text-slate-950 font-black text-[9px] px-2 py-0.5 rounded-full shadow-sm uppercase">
-                              NPCI Live QR
+                              Official Admin QR
                             </span>
                           </div>
                         </div>
@@ -1906,12 +2872,16 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                           </p>
 
                           <div className="flex items-center justify-center sm:justify-start space-x-2 pt-0.5">
-                            <span className="text-xs text-amber-800 font-mono font-black bg-amber-50 px-3 py-1 rounded-xl border border-amber-300">
-                              recko.escrow@okhdfcbank
+                            <span className="text-xs text-amber-900 font-mono font-black bg-amber-100/80 px-3 py-1 rounded-xl border border-amber-300">
+                              {item.ownerUpiId || getAdminPaymentConfig().upiId}
                             </span>
                             <button
                               type="button"
-                              onClick={handleCopyUpi}
+                              onClick={() => {
+                                navigator.clipboard.writeText(item.ownerUpiId || 'recko.escrow@okhdfcbank');
+                                setCopiedUpi(true);
+                                setTimeout(() => setCopiedUpi(false), 2000);
+                              }}
                               className="text-xs bg-slate-900 hover:bg-slate-800 text-white px-3 py-1 rounded-xl flex items-center space-x-1 cursor-pointer font-bold transition-all shadow-sm"
                             >
                               <Copy className="h-3.5 w-3.5 text-amber-400" />
@@ -1920,6 +2890,31 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                           </div>
                         </div>
                       </div>
+                    </div>
+
+                    {/* MANDATORY 12-DIGIT UTR / TRANSACTION REFERENCE NUMBER INPUT */}
+                    <div className="bg-amber-500/10 p-4 rounded-2xl border-2 border-amber-400 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-black text-amber-950 flex items-center space-x-1.5">
+                          <CheckCircle2 className="h-4 w-4 text-amber-600" />
+                          <span>Enter 12-Digit Payment UTR / Transaction Ref ID *</span>
+                        </label>
+                        <span className="text-[10px] bg-amber-400 text-slate-950 px-2 py-0.5 rounded-md font-black uppercase shadow-xs">
+                          Mandatory
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-amber-900 font-medium leading-relaxed">
+                        After paying ₹{payableNowTotal} via GPay/PhonePe/Paytm or QR scan, enter the 12-digit UTR or Transaction Ref ID from your payment app below to confirm token payment verification.
+                      </p>
+                      <input
+                        type="text"
+                        maxLength={18}
+                        required
+                        placeholder="e.g. 423456789012 or UTR-99887766"
+                        value={utrNumber}
+                        onChange={(e) => setUtrNumber(e.target.value.toUpperCase())}
+                        className="w-full bg-white border border-amber-400 rounded-xl p-3 text-slate-950 font-mono font-black text-sm tracking-widest outline-none focus:ring-2 focus:ring-amber-500 shadow-inner"
+                      />
                     </div>
 
                     {/* Custom UPI ID Entry */}
@@ -2097,98 +3092,327 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
             </div>
           )}
 
-          {/* PAGE 4: DIGITAL RECEIPT & TICKET */}
+          {/* PAGE 4: DIGITAL CONFIRMATION & ESCROW DASHBOARD */}
           {currentStep === 4 && createdBooking && (
-            <div className="space-y-5 text-center animate-in zoom-in-95 duration-200">
+            <div className="space-y-5 animate-in zoom-in-95 duration-200 text-slate-900">
               
-              {/* Gold Escrow Seal Badge */}
-              <div className="h-16 w-16 bg-gradient-to-tr from-amber-500 to-yellow-400 text-slate-950 rounded-full flex items-center justify-center mx-auto shadow-xl shadow-amber-500/30">
-                <CheckCircle2 className="h-10 w-10 stroke-[2.5]" />
+              {/* Celebratory Hero Header */}
+              <div className="text-center space-y-2 pt-2">
+                <div className="relative inline-block">
+                  <div className="h-20 w-20 bg-gradient-to-tr from-amber-500 via-amber-400 to-yellow-400 text-slate-950 rounded-3xl flex items-center justify-center mx-auto shadow-xl shadow-amber-500/30 transform -rotate-3 hover:rotate-0 transition-transform">
+                    <CheckCircle2 className="h-12 w-12 stroke-[2.5]" />
+                  </div>
+                  <span className="absolute -bottom-1 -right-1 bg-emerald-500 text-white p-1 rounded-full shadow-md">
+                    <ShieldCheck className="h-4 w-4" />
+                  </span>
+                </div>
+
+                <div>
+                  <div className="inline-flex items-center space-x-1.5 bg-emerald-50 text-emerald-800 border border-emerald-300 px-3 py-1 rounded-full text-xs font-bold mb-1.5">
+                    <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
+                    <span>Recko Escrow Protected • 100% Refundable Guarantee</span>
+                  </div>
+                  <h3 className="text-xl sm:text-2xl font-black text-slate-900">
+                    Booking Request Confirmed & Token Secured!
+                  </h3>
+                  <p className="text-slate-600 text-xs sm:text-sm max-w-lg mx-auto font-medium">
+                    बधाई हो! आपकी बुकिंग सफलतापूर्वक दर्ज हो गई है। टोकन राशि सुरक्षित रूप से एस्क्रो में जमा कर दी गई है।
+                  </p>
+                </div>
               </div>
 
-              <div>
-                <span className="bg-amber-500/10 text-amber-800 border border-amber-400/40 px-3.5 py-1 rounded-full text-xs font-bold inline-flex items-center space-x-1.5 mb-2">
-                  <Clock className="h-3.5 w-3.5 text-amber-600" />
-                  <span>Escrow Token Held • 🟡 Host Review Pending</span>
-                </span>
-                <h3 className="text-lg sm:text-xl font-bold text-slate-900">
-                  Booking Request & Token Secured!
-                </h3>
-                <p className="text-slate-600 text-xs max-w-md mx-auto mt-1 font-medium">
-                  Your tenant verification details & token receipt have been recorded and forwarded to host <strong className="text-slate-900">{item.ownerName}</strong> for final approval.
-                </p>
+              {/* 4-Stage Interactive Live Progress Tracker */}
+              <div className="bg-slate-50 p-4 sm:p-5 rounded-3xl border border-amber-400/40 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center space-x-1.5">
+                    <Clock className="h-4 w-4 text-amber-500" />
+                    <span>Live Booking Status & Progress</span>
+                  </span>
+                  <span className="text-[10px] font-mono font-bold text-amber-800 bg-amber-100 px-2.5 py-0.5 rounded-md border border-amber-300">
+                    Host Review Underway
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs">
+                  <div className="bg-emerald-50 border-2 border-emerald-400 p-3 rounded-2xl">
+                    <div className="flex items-center space-x-1.5 text-emerald-700 font-black text-xs">
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      <span>1. Token Paid</span>
+                    </div>
+                    <p className="text-[10px] text-emerald-800 mt-1 font-medium">
+                      ₹{createdBooking.tokenPaidAmount} held in Escrow (Paid ✓)
+                    </p>
+                  </div>
+
+                  <div className="bg-amber-400/20 border-2 border-amber-400 p-3 rounded-2xl shadow-xs">
+                    <div className="flex items-center space-x-1.5 text-amber-900 font-black text-xs">
+                      <Clock className="h-4 w-4 animate-spin text-amber-700 shrink-0" />
+                      <span>2. Host Review</span>
+                    </div>
+                    <p className="text-[10px] text-amber-900 mt-1 font-medium">
+                      Tenant KYC & Profile sent to {item.ownerName}
+                    </p>
+                  </div>
+
+                  <div className="bg-white border border-slate-200 p-3 rounded-2xl opacity-75">
+                    <div className="flex items-center space-x-1.5 text-slate-600 font-bold text-xs">
+                      <FileText className="h-4 w-4 shrink-0" />
+                      <span>3. Approval</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Digital Tenancy Agreement signed
+                    </p>
+                  </div>
+
+                  <div className="bg-white border border-slate-200 p-3 rounded-2xl opacity-75">
+                    <div className="flex items-center space-x-1.5 text-slate-600 font-bold text-xs">
+                      <Building2 className="h-4 w-4 shrink-0" />
+                      <span>4. Handover</span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      Physical Inspection & Keys Move-In
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              {/* Official Receipt Summary Card (White Background, Black Text & Gold Accents) */}
-              <div className="bg-slate-50 p-4 sm:p-5 rounded-2xl border border-amber-400/40 text-left space-y-3 text-xs font-mono text-slate-900">
+              {/* Automated Mobile SMS Notification Status to Owner Card */}
+              <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50/70 border-2 border-emerald-500/40 rounded-3xl p-4 sm:p-5 shadow-sm text-left relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-400/10 rounded-full blur-2xl pointer-events-none" />
                 
-                <div className="flex justify-between border-b border-slate-200 pb-2.5">
-                  <span className="text-slate-600 font-sans">Booking Reference:</span>
-                  <strong className="text-amber-700 font-black text-sm">{createdBooking.id}</strong>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-200/80 pb-3">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="h-9 w-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-md shadow-emerald-600/20 shrink-0">
+                      <Smartphone className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs font-black uppercase tracking-wider text-emerald-900">
+                          Owner Mobile Notification Sent
+                        </span>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                          <CheckCircle2 className="h-3 w-3 mr-1 text-emerald-600" />
+                          SMS Dispatched ✓
+                        </span>
+                      </div>
+                      <p className="text-xs text-emerald-800 font-medium">
+                        Property Owner ({item.ownerName || 'Host'}) ke mobile number <strong className="font-mono font-bold text-emerald-950">{item.ownerContact || '+91 98765 43210'}</strong> par real-time alert bhej diya gaya hai.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-[11px] font-mono font-bold text-emerald-700 bg-white/80 px-2.5 py-1 rounded-lg border border-emerald-200 shrink-0 self-start sm:self-auto">
+                    📡 {createdBooking.ownerSmsTimestamp || 'Just now'}
+                  </div>
                 </div>
 
-                <div className="flex justify-between border-b border-slate-200 pb-2.5">
-                  <span className="text-slate-600 font-sans">Property / Asset:</span>
-                  <strong className="text-slate-900 truncate max-w-[200px] sm:max-w-md font-sans">{item.title}</strong>
+                {/* Live Message Body Preview */}
+                <div className="mt-3 bg-white/90 border border-emerald-300/80 rounded-2xl p-3 shadow-xs">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-emerald-900 mb-1.5">
+                    <span className="flex items-center space-x-1.5">
+                      <MessageSquare className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>SMS Alert Message Sent to Owner's Phone:</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
+                      Fast2SMS / Brevo Gateway
+                    </span>
+                  </div>
+                  <p className="text-xs font-mono text-slate-800 bg-slate-50 p-2.5 rounded-xl border border-slate-200 leading-relaxed select-all">
+                    "{ownerSmsResult?.smsText || formatOwnerBookingSmsText({
+                      ownerName: item.ownerName,
+                      ownerPhone: item.ownerContact,
+                      userName: fullName,
+                      userPhone: phone,
+                      itemTitle: item.title,
+                      bookingId: createdBooking.id,
+                      startDate: createdBooking.startDate,
+                      tokenPaidAmount: createdBooking.tokenPaidAmount || tokenAmount,
+                      duration: createdBooking.duration
+                    })}"
+                  </p>
                 </div>
 
-                <div className="flex justify-between border-b border-slate-200 pb-2.5">
-                  <span className="text-slate-600 font-sans">Tenant Name:</span>
-                  <strong className="text-slate-900 font-sans">{createdBooking.userName}</strong>
-                </div>
+                {/* Instant Action Channels: WhatsApp, Open SMS app, Call Host */}
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+                  <span className="text-[11px] font-bold text-emerald-900">Direct Channels:</span>
+                  
+                  <a
+                    href={getOwnerWhatsAppAlertUrl({
+                      ownerName: item.ownerName,
+                      ownerPhone: item.ownerContact,
+                      userName: fullName,
+                      userPhone: phone,
+                      itemTitle: item.title,
+                      bookingId: createdBooking.id,
+                      startDate: createdBooking.startDate,
+                      tokenPaidAmount: createdBooking.tokenPaidAmount || tokenAmount,
+                      duration: createdBooking.duration
+                    })}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-1.5 rounded-xl text-xs transition-colors shadow-xs"
+                  >
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    <span>WhatsApp Alert to Owner</span>
+                  </a>
 
-                <div className="flex justify-between border-b border-slate-200 pb-2.5">
-                  <span className="text-slate-600 font-sans">Government KYC Proof:</span>
-                  <strong className="text-slate-800">{createdBooking.govIdType} ({createdBooking.govIdNumber})</strong>
-                </div>
+                  <a
+                    href={getOwnerSmsDeepLinkUrl({
+                      ownerName: item.ownerName,
+                      ownerPhone: item.ownerContact,
+                      userName: fullName,
+                      userPhone: phone,
+                      itemTitle: item.title,
+                      bookingId: createdBooking.id,
+                      startDate: createdBooking.startDate,
+                      tokenPaidAmount: createdBooking.tokenPaidAmount || tokenAmount,
+                      duration: createdBooking.duration
+                    })}
+                    className="inline-flex items-center space-x-1.5 bg-white hover:bg-slate-50 text-emerald-800 font-bold px-3 py-1.5 rounded-xl text-xs border border-emerald-300 transition-colors shadow-xs"
+                  >
+                    <Smartphone className="h-3.5 w-3.5 text-emerald-600" />
+                    <span>Open Native SMS App</span>
+                  </a>
 
-                <div className="flex justify-between border-b border-slate-200 pb-2.5">
-                  <span className="text-slate-600 font-sans">Token Paid Amount:</span>
-                  <strong className="text-amber-700 font-black text-sm font-sans">₹{createdBooking.tokenPaidAmount} (PAID ✓ ESCROW LOCKED)</strong>
-                </div>
-
-                <div className="flex justify-between">
-                  <span className="text-slate-600 font-sans">Move-in / Start Date:</span>
-                  <strong className="text-slate-900 font-sans">{createdBooking.startDate}</strong>
+                  <a
+                    href={`tel:${item.ownerContact || '+919876543210'}`}
+                    className="inline-flex items-center space-x-1.5 bg-slate-900 hover:bg-slate-800 text-amber-400 font-bold px-3 py-1.5 rounded-xl text-xs transition-colors shadow-xs ml-auto"
+                  >
+                    <Phone className="h-3.5 w-3.5" />
+                    <span>Call Host Directly</span>
+                  </a>
                 </div>
               </div>
 
-              {/* Lifecycle explanation bar */}
-              <div className="bg-slate-50 p-3.5 sm:p-4 rounded-2xl border border-slate-200 text-xs text-left space-y-2">
-                <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider flex items-center space-x-1.5">
-                  <Info className="h-3.5 w-3.5 text-amber-500" />
-                  <span>Booking Request Lifecycle</span>
-                </h4>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] font-bold">
-                  <div className="bg-amber-400 text-slate-950 p-2.5 rounded-xl border border-amber-300 text-center shadow-xs">
-                    🟡 1. Token Paid
+              {/* Rented Asset & Calculation Snapshot Card */}
+              <div className="bg-slate-50 p-4 sm:p-5 rounded-3xl border border-slate-200 space-y-3.5 text-left">
+                <div className="flex items-start space-x-3 sm:space-x-4 border-b border-slate-200 pb-3">
+                  <img
+                    src={item.image}
+                    alt={item.title}
+                    className="h-16 w-16 sm:h-20 sm:w-20 rounded-2xl object-cover border border-amber-400/40 shrink-0"
+                  />
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-xs font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded">
+                        #{createdBooking.id}
+                      </span>
+                      <span className="text-[11px] text-slate-500 font-medium">
+                        {createdBooking.bookingDate || 'Just now'}
+                      </span>
+                    </div>
+                    <h4 className="font-bold text-sm sm:text-base text-slate-900 truncate">
+                      {item.title}
+                    </h4>
+                    <p className="text-xs text-slate-600 flex items-center space-x-1">
+                      <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                      <span className="truncate">{item.location}, {item.city}</span>
+                    </p>
                   </div>
-                  <div className="bg-white text-slate-800 p-2.5 rounded-xl border border-slate-200 text-center">
-                    ⚪ 2. Host Review
+                </div>
+
+                {/* Key Details Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200">
+                    <span className="text-[10px] text-slate-500 font-bold uppercase block">
+                      Scheduled Start / Move-In
+                    </span>
+                    <strong className="text-slate-900 block mt-0.5 font-bold">
+                      {createdBooking.startDate}
+                    </strong>
                   </div>
-                  <div className="bg-white text-emerald-700 p-2.5 rounded-xl border border-slate-200 text-center">
-                    🟢 3. Approved
+
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200">
+                    <span className="text-[10px] text-slate-500 font-bold uppercase block">
+                      Token Paid (In Escrow)
+                    </span>
+                    <strong className="text-emerald-700 block mt-0.5 font-mono font-black text-sm">
+                      {formatINR(createdBooking.tokenPaidAmount || tokenAmount)} (PAID ✓)
+                    </strong>
                   </div>
-                  <div className="bg-white text-slate-700 p-2.5 rounded-xl border border-slate-200 text-center">
-                    🏠 4. Move In
+
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200 col-span-2 sm:col-span-1">
+                    <span className="text-[10px] text-slate-500 font-bold uppercase block">
+                      Balance Due at Handover
+                    </span>
+                    <strong className="text-slate-900 block mt-0.5 font-mono font-black text-sm">
+                      {formatINR(balanceDueAtHandover)}
+                    </strong>
                   </div>
                 </div>
               </div>
 
-              {/* Action Buttons */}
+              {/* Host Contact Card */}
+              <div className="bg-white p-4 rounded-3xl border-2 border-amber-400/40 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-3 text-left">
+                <div className="flex items-center space-x-3">
+                  <div className="h-12 w-12 rounded-2xl bg-slate-900 text-amber-400 flex items-center justify-center font-black text-lg border border-amber-400/30 shrink-0">
+                    {item.ownerName ? item.ownerName.charAt(0).toUpperCase() : 'H'}
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block">
+                      Authorized Property Host
+                    </span>
+                    <strong className="text-slate-900 text-sm font-bold block">
+                      {item.ownerName || 'Property Host'}
+                    </strong>
+                    <span className="text-xs font-mono text-slate-600 block">
+                      {item.ownerContact || '+91 98765 43210'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2 w-full sm:w-auto">
+                  <a
+                    href={`tel:${item.ownerContact || '+919876543210'}`}
+                    className="flex-1 sm:flex-initial bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl border border-slate-800 flex items-center justify-center space-x-1.5 transition-colors"
+                  >
+                    <Phone className="h-3.5 w-3.5 text-amber-400" />
+                    <span>Call Host</span>
+                  </a>
+
+                  <a
+                    href={`https://wa.me/91${(item.ownerContact || '9876543210').replace(/\D/g, '')}?text=${encodeURIComponent(`Hi ${item.ownerName}, I have placed a rental booking request for "${item.title}" (Ref #${createdBooking.id}) on Recko-India.`)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex-1 sm:flex-initial bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-2.5 rounded-xl flex items-center justify-center space-x-1.5 transition-colors"
+                  >
+                    <span>WhatsApp</span>
+                  </a>
+                </div>
+              </div>
+
+              {/* Action Buttons: View Slip, Track in My Bookings, Feedback */}
               <div className="flex flex-col sm:flex-row gap-2.5 sm:gap-3 pt-2">
+                {/* Primary Button: View & Print Official Slip */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onOpenReceiptModal && createdBooking) {
+                      onClose();
+                      onOpenReceiptModal(createdBooking);
+                    } else {
+                      window.print();
+                    }
+                  }}
+                  className="flex-1 bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black py-3.5 rounded-2xl shadow-xl shadow-amber-500/25 text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-center space-x-2"
+                >
+                  <FileText className="h-4 w-4 stroke-[2.5]" />
+                  <span>View & Print Official Slip (रसीद देखें)</span>
+                </button>
+
+                {/* Track Status in My Bookings */}
                 <button
                   type="button"
                   onClick={() => {
                     onClose();
                     onNavigateToMyBookings();
                   }}
-                  className="flex-1 bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black py-3.5 rounded-2xl shadow-lg shadow-amber-500/20 text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-center space-x-2"
+                  className="bg-slate-900 hover:bg-slate-800 text-white font-bold py-3.5 px-5 rounded-2xl border border-slate-800 text-xs sm:text-sm transition-all cursor-pointer flex items-center justify-center space-x-2"
                 >
-                  <span>Track Status in My Bookings</span>
-                  <ArrowRight className="h-4 w-4 stroke-[3]" />
+                  <span>Track in My Bookings</span>
+                  <ArrowRight className="h-4 w-4 stroke-[2.5] text-amber-400" />
                 </button>
 
+                {/* Optional Feedback */}
                 {onOpenFeedbackModal && (
                   <button
                     type="button"
@@ -2196,23 +3420,12 @@ export const BookingRequestModal: React.FC<BookingRequestModalProps> = ({
                       onClose();
                       onOpenFeedbackModal();
                     }}
-                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-4 py-3 rounded-2xl text-xs transition-all cursor-pointer flex items-center justify-center space-x-1.5"
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-800 border border-slate-300 font-bold px-4 py-3.5 rounded-2xl text-xs transition-all cursor-pointer flex items-center justify-center space-x-1.5"
                   >
                     <Sparkles className="h-4 w-4 text-amber-500" />
-                    <span>Feedback & Review</span>
+                    <span>Feedback</span>
                   </button>
                 )}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    alert(`Official PDF Token Receipt #${createdBooking.id} generated and downloaded.`);
-                  }}
-                  className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-4 py-3 rounded-2xl border border-slate-800 text-xs transition-all cursor-pointer flex items-center justify-center space-x-2"
-                >
-                  <Download className="h-4 w-4 text-amber-400" />
-                  <span>Download Token Receipt</span>
-                </button>
               </div>
 
             </div>

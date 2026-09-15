@@ -1206,7 +1206,7 @@ export const MOCK_SPORTS_TURFS: SportsTurfItem[] = [
     location: 'Bhuwana Bypass',
     city: 'Udaipur',
     images: [
-      'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?auto=format&fit=crop&w=1200&q=80',
+      'https://images.unsplash.com/photo-1517649763962-0c623066013b?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
       'https://images.unsplash.com/photo-1574629810360-7efbbe195018?auto=format&fit=crop&w=1200&q=80'
     ],
     amenities: ['FIFA Grade Artificial Turf', 'LED Floodlights', 'Drinking Water & Showers', 'Dressing Room', 'Cricket Bats & Balls Provided'],

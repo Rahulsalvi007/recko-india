@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { RentalBooking, UserProfile } from '../types';
 import { openWhatsAppChat } from '../utils/whatsapp';
+import { makePhoneCall } from '../utils/phoneCall';
 
 interface MyBookingsSectionProps {
   bookings: RentalBooking[];
@@ -59,15 +60,17 @@ export const MyBookingsSection: React.FC<MyBookingsSectionProps> = ({
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'Pending Verification' | 'Accepted' | 'Completed' | 'Cancelled'>('ALL');
 
   const handleDeleteOrCancel = (booking: RentalBooking) => {
-    const isPending = booking.status === 'Pending Verification' || booking.status === 'Pending Requests' || booking.status === 'Owner Reviewing' || booking.status === 'Active';
-    const message = isPending
-      ? `Are you sure you want to cancel booking #${booking.id} for "${booking.itemTitle}"?\n\nThis will cancel your request and permanently remove it from your booking history.`
-      : `Remove booking #${booking.id} permanently from your history?`;
-
-    if (window.confirm(message)) {
-      if (onDeleteBooking) {
-        onDeleteBooking(booking.id);
-      } else {
+    const isCancelledOrRejected = booking.status === 'Cancelled' || booking.status === 'Rejected' || booking.status === 'Declined';
+    if (isCancelledOrRejected) {
+      if (window.confirm(`Permanently delete booking #${booking.id} for "${booking.itemTitle}" from your history?`)) {
+        if (onDeleteBooking) {
+          onDeleteBooking(booking.id);
+        } else {
+          onCancelBooking(booking.id);
+        }
+      }
+    } else {
+      if (window.confirm(`Are you sure you want to cancel booking #${booking.id} for "${booking.itemTitle}"?`)) {
         onCancelBooking(booking.id);
       }
     }
@@ -349,17 +352,28 @@ export const MyBookingsSection: React.FC<MyBookingsSectionProps> = ({
                 </div>
 
                 {/* Token Paid Status & Guarantee Seal */}
-                <div className="bg-slate-50 dark:bg-zinc-800/70 p-3 rounded-2xl border border-slate-200/80 dark:border-zinc-700/80 flex items-center justify-between text-xs">
-                  <div className="flex items-center space-x-1.5 text-slate-700 dark:text-zinc-300 font-bold">
-                    <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
-                    <span>
-                      Token: <strong className="text-emerald-600 dark:text-emerald-400">₹{b.tokenPaidAmount || 99} (Paid ✓)</strong>
-                    </span>
+                <div className="bg-slate-50 dark:bg-zinc-800/70 p-3 rounded-2xl border border-slate-200/80 dark:border-zinc-700/80 space-y-1.5 text-xs">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-1.5 text-slate-700 dark:text-zinc-300 font-bold">
+                      <ShieldCheck className="h-4 w-4 text-emerald-500 shrink-0" />
+                      <span>
+                        Token Amount: <strong className="text-amber-600 dark:text-amber-400 font-black">₹{b.tokenPaidAmount || 99}</strong>
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-slate-400 dark:text-zinc-400 uppercase font-bold block">Asset Price</span>
+                      <span className="text-sm font-black text-slate-900 dark:text-zinc-100 font-mono">
+                        ₹{b.totalPrice.toLocaleString('en-IN')}
+                      </span>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <span className="text-[10px] text-slate-400 dark:text-zinc-400 uppercase font-bold block">Estimated Rent</span>
-                    <span className="text-sm font-black text-slate-900 dark:text-zinc-100 font-mono">
-                      ₹{b.totalPrice.toLocaleString('en-IN')}
+
+                  <div className="flex items-center justify-between text-[11px] font-mono border-t border-slate-200/60 dark:border-zinc-700/60 pt-1.5">
+                    <span className="text-slate-600 dark:text-zinc-400">
+                      UTR Ref ID: <strong className="text-slate-900 dark:text-zinc-100">{b.utrNumber || b.transactionId || 'Pending'}</strong>
+                    </span>
+                    <span className={`px-2 py-0.5 rounded font-black text-[10px] uppercase ${b.status === 'Accepted' || b.status === 'Booking Confirmed' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'}`}>
+                      {b.status === 'Accepted' || b.status === 'Booking Confirmed' ? 'Payment Verified & Confirmed ✓' : '⏳ Pending Owner Payment Verification'}
                     </span>
                   </div>
                 </div>
@@ -387,13 +401,14 @@ export const MyBookingsSection: React.FC<MyBookingsSectionProps> = ({
                   </button>
 
                   {b.ownerContact && (
-                    <a
-                      href={`tel:${b.ownerContact}`}
-                      className="col-span-2 sm:col-span-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs py-2 px-2.5 rounded-xl border border-slate-200 transition-all flex items-center justify-center space-x-1.5 text-center"
+                    <button
+                      type="button"
+                      onClick={() => makePhoneCall(b.ownerContact, b.ownerName)}
+                      className="col-span-2 sm:col-span-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-xs py-2 px-2.5 rounded-xl border border-amber-400 transition-all flex items-center justify-center space-x-1.5 text-center cursor-pointer shadow-xs"
                     >
-                      <Phone className="h-3.5 w-3.5 text-slate-500" />
+                      <Phone className="h-3.5 w-3.5 text-slate-950" />
                       <span>Call Host</span>
-                    </a>
+                    </button>
                   )}
                 </div>
               </div>
@@ -433,10 +448,10 @@ export const MyBookingsSection: React.FC<MyBookingsSectionProps> = ({
                   type="button"
                   onClick={() => handleDeleteOrCancel(b)}
                   className="bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:text-rose-300 font-extrabold text-xs px-3 py-2.5 rounded-xl border border-rose-200 dark:border-rose-800 transition-all cursor-pointer shrink-0 flex items-center space-x-1"
-                  title="Cancel and permanently remove from booking history"
+                  title={b.status === 'Cancelled' || b.status === 'Rejected' || b.status === 'Declined' ? 'Permanently delete this record from booking history' : 'Cancel this booking request'}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
-                  <span>{b.status === 'Cancelled' ? 'Delete from History' : 'Cancel & Remove'}</span>
+                  <span>{b.status === 'Cancelled' || b.status === 'Rejected' || b.status === 'Declined' ? 'Delete from History' : 'Cancel Request'}</span>
                 </button>
               </div>
 

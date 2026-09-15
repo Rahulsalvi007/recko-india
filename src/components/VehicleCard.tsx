@@ -12,10 +12,12 @@ import {
   Radio,
   UserCheck,
   MessageCircle,
-  MessageSquare
+  MessageSquare,
+  Phone
 } from 'lucide-react';
 import { Vehicle } from '../types';
 import { openWhatsAppChat } from '../utils/whatsapp';
+import { makePhoneCall } from '../utils/phoneCall';
 
 interface VehicleCardProps {
   vehicle: Vehicle;
@@ -154,7 +156,7 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
         {/* Action Buttons */}
         <div className="pt-3 space-y-2 border-t border-slate-100 dark:border-zinc-800">
           {/* Quick Communication Bar */}
-          <div className="grid grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-3 gap-1.5">
             <button
               type="button"
               onClick={() => {
@@ -163,7 +165,7 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
                     id: vehicle.id,
                     title: vehicle.title,
                     image: vehicle.images[0],
-                    priceDisplay: `₹${vehicle.rentPerDay.toLocaleString('en-IN')}/day`,
+                    priceDisplay: `₹${(vehicle.rentPerDay || 0).toLocaleString('en-IN')}/day`,
                     ownerName: vehicle.ownerName || 'Express Wheels Host',
                     ownerContact: vehicle.ownerContact || '+91 98765 43210',
                     category: vehicle.vehicleType,
@@ -172,11 +174,11 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
                   });
                 }
               }}
-              className="bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-indigo-700 dark:text-indigo-300 font-extrabold text-[11px] py-1.5 px-2 rounded-xl flex items-center justify-center space-x-1 transition-all cursor-pointer"
+              className="bg-slate-100 hover:bg-slate-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-indigo-700 dark:text-indigo-300 font-extrabold text-[10px] py-1.5 px-1 rounded-xl flex items-center justify-center space-x-1 transition-all cursor-pointer"
               title="Chat with Host"
             >
               <MessageSquare className="h-3.5 w-3.5" />
-              <span>Chat Host</span>
+              <span>Chat</span>
             </button>
 
             <button
@@ -187,16 +189,26 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({
                   itemTitle: vehicle.title,
                   itemCategory: vehicle.vehicleType,
                   ownerName: vehicle.ownerName || 'Vehicle Host',
-                  price: `₹${vehicle.rentPerDay.toLocaleString('en-IN')}/day`,
+                  price: `₹${(vehicle.rentPerDay || 0).toLocaleString('en-IN')}/day`,
                   location: vehicle.location,
                   city: vehicle.city
                 });
               }}
-              className="bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-extrabold text-[11px] py-1.5 px-2 rounded-xl flex items-center justify-center space-x-1 transition-all cursor-pointer border border-emerald-200/60 dark:border-emerald-800/60"
+              className="bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/50 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-extrabold text-[10px] py-1.5 px-1 rounded-xl flex items-center justify-center space-x-1 transition-all cursor-pointer border border-emerald-200/60 dark:border-emerald-800/60"
               title="Chat on WhatsApp"
             >
               <MessageCircle className="h-3.5 w-3.5 text-emerald-500" />
               <span>WhatsApp</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => makePhoneCall(vehicle.ownerContact || '+91 98765 43210', vehicle.ownerName || 'Vehicle Host')}
+              className="bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/50 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-300 font-extrabold text-[10px] py-1.5 px-1 rounded-xl flex items-center justify-center space-x-1 transition-all cursor-pointer border border-amber-200/60 dark:border-amber-800/60"
+              title="Call Host"
+            >
+              <Phone className="h-3.5 w-3.5 text-amber-500" />
+              <span>Call</span>
             </button>
           </div>
 

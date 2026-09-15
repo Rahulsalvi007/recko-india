@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Wrench, AlertTriangle, CheckCircle2, Plus, Clock, ShieldAlert, Building2 } from 'lucide-react';
-import { saveDocument, subscribeCollection } from '../lib/firebase';
+import { X, Wrench, AlertTriangle, CheckCircle2, Plus, Clock, ShieldAlert, Building2, Trash2 } from 'lucide-react';
+import { saveDocument, subscribeCollection, deleteDocument } from '../lib/firebase';
 import { RentalBooking, LandlordUser, AppNotification } from '../types';
 
 interface MaintenanceTicketModalProps {
@@ -293,12 +293,31 @@ export const MaintenanceTicketModal: React.FC<MaintenanceTicketModalProps> = ({
 
                       {loggedInLandlord && t.status !== 'Resolved' && (
                         <button
+                          type="button"
                           onClick={() => handleResolveTicket(t.id)}
                           className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] px-3 py-1 rounded-xl transition-all cursor-pointer shadow-sm"
                         >
                           Mark Resolved
                         </button>
                       )}
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (window.confirm(`Delete maintenance ticket ${t.id} from history?`)) {
+                            setTickets((prev) => prev.filter((x) => x.id !== t.id));
+                            try {
+                              await deleteDocument('maintenance_tickets', t.id);
+                            } catch (e) {
+                              console.warn('Failed to delete maintenance ticket:', e);
+                            }
+                          }
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition-colors cursor-pointer"
+                        title="Delete Ticket from History"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
                     </div>
                   </div>
                 ))}

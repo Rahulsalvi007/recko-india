@@ -16,7 +16,10 @@ import {
   Bot,
   User as UserIcon,
   HelpCircle,
-  Tag
+  Tag,
+  Copy,
+  Volume2,
+  Trash2
 } from 'lucide-react';
 import {
   Property,
@@ -29,6 +32,9 @@ import {
   Library,
   AIRecommendationResult
 } from '../types';
+import { getApiUrl } from '../utils/apiConfig';
+import { generateConciergeReply } from '../utils/conciergeAiEngine';
+import { queryUniversalAIEngine } from '../utils/universalAiEngine';
 
 interface AIAdvisorModalProps {
   isOpen: boolean;
@@ -71,7 +77,7 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
   onSelectRestaurant,
   onSelectLibrary
 }) => {
-  const [activeTab, setActiveTab] = useState<'advisor' | 'concierge'>('advisor');
+  const [activeTab, setActiveTab] = useState<'advisor' | 'concierge'>('concierge');
 
   // Advisor State
   const [whatYouWant, setWhatYouWant] = useState<string>('Hyundai Creta Self-Drive Car');
@@ -85,7 +91,7 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
   const [chatMessages, setChatMessages] = useState<Array<{ role: 'user' | 'assistant'; text: string; time: string }>>([
     {
       role: 'assistant',
-      text: 'Hello! I am Recko-India’s 24/7 AI Concierge. You can ask me anything about rental assets (Flats, PGs, Self-Drive Cars, Bikes, Outfits, Turfs), security deposit rules, or zero-brokerage direct owner bookings.',
+      text: 'Namaste! Main Recko-India ka 24/7 Smart AI Assistant hoon.\n\nAap mujhse Flats, Student PGs, Self-Drive Cars/Bikes, TV/Fridge/AC, Wedding Outfits, Turfs ya Hotels ke bare me **kuch bhi** pooch sakte hain!\n\n💡 Try asking:\n• *"Jaipur me 2 BHK flat dikhao"*\n• *"AC ya Fridge rent par kitne ka milega?"*\n• *"Thar rent lene ke rules kya hain?"*\n• *"Booking kaise karein aur owner ka number kaise milega?"*',
       time: 'Just now'
     }
   ]);
@@ -182,7 +188,7 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
         priceUnit: '/hour',
         rentPerMonth: (s.pricePerHour || 0) * 30,
         amenities: s.amenities || [s.sportType],
-        image: s.images && s.images[0] ? s.images[0] : 'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?w=600&q=80',
+        image: s.images && s.images[0] ? s.images[0] : 'https://images.unsplash.com/photo-1517649763962-0c623066013b?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
         badgeColor: 'bg-slate-100 text-slate-800 border-slate-300'
       })
     );
@@ -319,7 +325,7 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
     };
 
     try {
-      const resp = await fetch('/api/gemini/recommend', {
+      const resp = await fetch(getApiUrl('/api/gemini/recommend'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -358,94 +364,83 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
   };
 
   const getClientConciergeReply = (query: string): string => {
-    const q = query.toLowerCase();
-    if (q.includes('deposit') || q.includes('security') || q.includes('refund')) {
-      return `🔒 **Security Deposit Policy:**\n\n• Security deposits are held in **100% Bank Escrow**.\n• Refunds are processed within 24 hours after host check-out inspection.\n• Under Model Tenancy Act, residential deposits are capped at max 2 months rent.\n• You can dispute any deductions directly with Recko Admin support!`;
-    }
-    if (q.includes('broker') || q.includes('brokerage') || q.includes('zero') || q.includes('direct') || q.includes('commission')) {
-      return `🏠 **Zero Brokerage Guarantee:**\n\n• Recko-India connects tenants directly with verified owners.\n• No broker commission is charged for any listing.\n• You get direct owner WhatsApp / phone contact after paying a 100% refundable ₹99 token!`;
-    }
-    if (q.includes('flat') || q.includes('bhk') || q.includes('pg') || q.includes('hostel') || q.includes('house') || q.includes('villa') || q.includes('room')) {
-      return `🏡 **Properties & Student PGs:**\n\n• Explore verified 1-4 BHK flats, luxury villas, and student PGs with mess facilities.\n• Filter listings by city, maximum monthly budget, or college proximity.\n• All homes come with verified owner contacts and zero brokerage!`;
-    }
-    if (q.includes('roommate') || q.includes('flatmate') || q.includes('sharing')) {
-      return `👥 **Nearby Roommate Finder:**\n\n• Switch to the "Student PG & Roommate" tab on the main page to connect live with nearby roommates.\n• Filter profiles by distance (< 1km, < 5km), gender preference, and dietary habits (Veg / Non-Veg).`;
-    }
-    if (q.includes('car') || q.includes('bike') || q.includes('scooty') || q.includes('vehicle') || q.includes('thar') || q.includes('creta') || q.includes('activa')) {
-      return `🚗 **Self-Drive Vehicle Rental Policy:**\n\n• **Required Documents:** Valid Indian Driving License & Aadhaar Card.\n• **Kilometer Limit:** 250 km/day included free (extra km @ ₹8/km).\n• Fuel & FASTag toll fees are borne by the hirer. All vehicles have speed-governors and live GPS tracking for safety.`;
-    }
-    if (q.includes('dress') || q.includes('lehenga') || q.includes('sherwani') || q.includes('cloth') || q.includes('suit') || q.includes('gown') || q.includes('wedding')) {
-      return `👗 **Designer Outfit Rental Policy:**\n\n• **Dry Cleaning:** All garments are professionally dry-cleaned & steam sanitized before dispatch.\n• **Alteration & Fitting:** Custom doorstep fitting & minor alterations are available on request.\n• Standard rental duration is 3 days (expandable up to 7 days).`;
-    }
-    if (q.includes('turf') || q.includes('cricket') || q.includes('football') || q.includes('badminton') || q.includes('ground')) {
-      return `🏏 **Sports Turf & Court Booking:**\n\n• **Slot Timing:** 24/7 LED Floodlight hourly slots available.\n• **Complimentary Equipment:** Bats, balls, bibs, and stumps are provided free at the venue.\n• Select the "Sports Turfs" filter in the top navigation to reserve your instant time slot!`;
-    }
-    if (q.includes('hotel') || q.includes('stay') || q.includes('resort') || q.includes('suite')) {
-      return `🏨 **Hotels & Resort Reservations:**\n\n• Instant daily room reservations with FSSAI & licensed hotel partners.\n• Select the "Hotels" tab on the homepage to explore room amenities, ratings, and instant check-in slots.`;
-    }
-    if (q.includes('library') || q.includes('study') || q.includes('pass') || q.includes('cabin')) {
-      return `📚 **Digital Libraries & AC Study Pods:**\n\n• 24/7 access to silent, soundproof study cabins with high-speed Wi-Fi & ergonomic seating.\n• Select the "Libraries" category to get a daily or monthly study pass.`;
-    }
-    return `Hello! Welcome to Recko-India 24/7 AI Concierge.\n\nYou can ask about any rental category or policy:\n• 🏠 **Flats, Villas & Student PGs** (Zero Brokerage, Deposit Rules)\n• 🚗 **Self-Drive Cars & Bikes** (Creta, Thar, Activa, KYC & FASTag)\n• 👗 **Wedding Sherwanis & Bridal Lehengas** (Sanitization & Fitting)\n• 🏏 **Sports Turfs & Box Cricket Slots**\n• 📄 **11-Month Rental Agreements & Legal Guidelines**`;
+    return queryUniversalAIEngine(query, {
+      properties: availableProperties || [],
+      vehicles: availableVehicles || [],
+      clothing: availableClothing || [],
+      sportsTurfs: availableSportsTurfs || [],
+      generalItems: availableGeneralItems || [],
+      hotels: availableHotels || [],
+      restaurants: availableRestaurants || [],
+      libraries: availableLibraries || []
+    }, 'tenant');
   };
 
   const handleSendChat = async (e?: React.FormEvent, customQuery?: string) => {
     if (e) e.preventDefault();
     const queryToSend = (customQuery || chatInput).trim();
-    if (!queryToSend || chatLoading) return;
+    if (!queryToSend) return;
     setChatInput('');
 
-    const newHistory = [
-      ...chatMessages,
-      {
-        role: 'user' as const,
-        text: queryToSend,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }
-    ];
-    setChatMessages(newHistory);
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const userMsg = { role: 'user' as const, text: queryToSend, time };
+
+    const updatedHistory = [...chatMessages, userMsg];
+    setChatMessages(updatedHistory);
     setChatLoading(true);
 
     try {
-      const resp = await fetch('/api/gemini/chat', {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+      const resp = await fetch(getApiUrl('/api/gemini/chat'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           message: queryToSend,
-          history: newHistory.slice(-6).map((m) => ({ role: m.role, content: m.text }))
+          history: updatedHistory.slice(-8).map((m) => ({ role: m.role, content: m.text }))
         })
       }).catch(() => null);
+
+      clearTimeout(timeoutId);
 
       if (resp && resp.ok) {
         const contentType = resp.headers.get('content-type') || '';
         if (contentType.includes('application/json')) {
           const data = await resp.json();
-          setChatMessages((prev) => [
-            ...prev,
-            {
-              role: 'assistant',
-              text: data.reply || getClientConciergeReply(queryToSend),
-              time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            }
-          ]);
-          return;
+          if (data && data.reply && typeof data.reply === 'string' && data.reply.trim().length > 5) {
+            setChatMessages((prev) => [
+              ...prev,
+              {
+                role: 'assistant',
+                text: data.reply,
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              }
+            ]);
+            setChatLoading(false);
+            return;
+          }
         }
       }
 
+      // Fallback to ultra-accurate real-database client concierge engine
+      const localReply = getClientConciergeReply(queryToSend);
       setChatMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          text: getClientConciergeReply(queryToSend),
+          text: localReply,
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
       ]);
     } catch (err) {
+      const localReply = getClientConciergeReply(queryToSend);
       setChatMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          text: getClientConciergeReply(queryToSend),
+          text: localReply,
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         }
       ]);
@@ -508,10 +503,16 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
   const popularCities = ['Jaipur', 'Udaipur', 'Bangalore', 'Delhi', 'Gurgaon', 'Mumbai', 'Pune', 'Hyderabad', 'Kota'];
 
   const quickChatChips = [
-    'What are the Security Deposit refund rules?',
-    'How to contact owners directly with zero brokerage?',
-    'What documents are required for Car & Bike rentals?',
-    'How to unlock the 10% student discount?'
+    '🏠 2 BHK Flat in Jaipur',
+    '🚗 Thar Self-Drive Rent',
+    '❄️ AC & Fridge Rental Rates',
+    '👗 Bridal Lehenga & Sherwani',
+    '⚽ Cricket Turf Hourly Rate',
+    '📚 24/7 Library Study Pass',
+    '🏨 Hotel Room Tariffs',
+    '📱 Booking Kaise Karein?',
+    '🔒 Security Deposit Refund Rules',
+    '🤝 Zero Brokerage Direct Contact'
   ];
 
   return (
@@ -837,6 +838,10 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
 
                           <button
                             type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleItemClick(item);
+                            }}
                             className="px-3 py-1.5 bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-xs rounded-xl flex items-center space-x-1 shrink-0 shadow-xs cursor-pointer"
                           >
                             <span>View / Book</span>
@@ -859,20 +864,46 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
         {/* ========================================================================= */}
         {activeTab === 'concierge' && (
           <div className="flex flex-col flex-1 overflow-hidden bg-white text-slate-900">
-            {/* Quick Chat Suggestion Chips */}
-            <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center space-x-1.5 overflow-x-auto no-scrollbar shrink-0">
-              <span className="text-[10px] font-bold text-slate-400 shrink-0">Suggested:</span>
-              {quickChatChips.map((chip, idx) => (
+            {/* Quick Chat Suggestion Chips & Clear Chat Toolbar */}
+            <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2 shrink-0">
+              <div className="flex items-center space-x-1.5 overflow-x-auto no-scrollbar min-w-0">
+                <span className="text-[10px] font-bold text-slate-400 shrink-0">Suggested:</span>
+                {quickChatChips.map((chip, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      handleSendChat(undefined, chip);
+                    }}
+                    className="px-2.5 py-1 rounded-xl text-[11px] font-bold bg-white text-slate-800 border border-slate-200 hover:border-amber-500 hover:bg-amber-50 transition-all cursor-pointer shrink-0"
+                  >
+                    {chip}
+                  </button>
+                ))}
+              </div>
+              {chatMessages.length > 1 && (
                 <button
-                  key={idx}
+                  type="button"
                   onClick={() => {
-                    handleSendChat(undefined, chip);
+                    if (window.confirm('Clear AI chat history and start fresh?')) {
+                      setChatMessages([
+                        {
+                          role: 'assistant',
+                          text: 'Namaste! Main Recko-India ka 24/7 Smart AI Assistant hoon.\n\nAap mujhse Flats, Student PGs, Self-Drive Cars/Bikes, TV/Fridge/AC, Wedding Outfits, Turfs ya Hotels ke bare me **kuch bhi** pooch sakte hain!\n\n💡 Try asking:\n• *"Jaipur me 2 BHK flat dikhao"*\n• *"AC ya Fridge rent par kitne ka milega?"*\n• *"Thar rent lene ke rules kya hain?"*\n• *"Booking kaise karein aur owner ka number kaise milega?"*',
+                          time: 'Just now'
+                        }
+                      ]);
+                      try {
+                        localStorage.removeItem('renthub_ai_concierge_chat');
+                      } catch {}
+                    }
                   }}
-                  className="px-2.5 py-1 rounded-xl text-[11px] font-bold bg-white text-slate-800 border border-slate-200 hover:border-amber-500 hover:bg-amber-50 transition-all cursor-pointer shrink-0"
+                  className="px-2.5 py-1 rounded-xl text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 flex items-center space-x-1 transition-all cursor-pointer shrink-0 shadow-xs"
+                  title="Clear chat history"
                 >
-                  {chip}
+                  <Trash2 className="h-3 w-3" />
+                  <span>Clear Chat</span>
                 </button>
-              ))}
+              )}
             </div>
 
             {/* Chat Messages */}
@@ -919,13 +950,44 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
                         );
                       })}
                     </div>
-                    <span
-                      className={`text-[9px] block mt-1.5 ${
-                        msg.role === 'user' ? 'text-slate-300 text-right' : 'text-slate-500'
-                      }`}
-                    >
-                      {msg.time}
-                    </span>
+                    <div className="flex items-center justify-between mt-1.5 pt-1 border-t border-slate-100/50 text-[10px]">
+                      <span className={msg.role === 'user' ? 'text-slate-300' : 'text-slate-400 font-medium'}>
+                        {msg.time}
+                      </span>
+                      {msg.role === 'assistant' && (
+                        <div className="flex items-center space-x-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if ('speechSynthesis' in window) {
+                                window.speechSynthesis.cancel();
+                                const clean = msg.text.replace(/[*_#`~]/g, '');
+                                const ut = new SpeechSynthesisUtterance(clean.slice(0, 300));
+                                ut.lang = 'hi-IN';
+                                window.speechSynthesis.speak(ut);
+                              }
+                            }}
+                            className="text-slate-400 hover:text-amber-600 font-bold flex items-center space-x-0.5 cursor-pointer"
+                            title="Listen to Voice Readout"
+                          >
+                            <Volume2 className="h-3 w-3" />
+                            <span>Listen</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(msg.text);
+                              alert('📋 Concierge response copied to clipboard!');
+                            }}
+                            className="text-slate-400 hover:text-amber-600 font-bold flex items-center space-x-0.5 cursor-pointer"
+                            title="Copy Answer"
+                          >
+                            <Copy className="h-3 w-3" />
+                            <span>Copy</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {msg.role === 'user' && (
@@ -951,7 +1013,7 @@ export const AIAdvisorModal: React.FC<AIAdvisorModalProps> = ({
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Ask about rental rules, zero-brokerage, PG guidelines, deposit..."
+                placeholder="Poochiye flats, cars, AC/TV, turfs, hotels ya booking rules ke bare me..."
                 className="flex-1 p-2.5 bg-white border border-slate-300 rounded-xl text-xs text-slate-900 font-bold focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none"
               />
               <button

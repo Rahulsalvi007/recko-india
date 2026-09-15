@@ -9,7 +9,7 @@ export type StudentHousingType = 'College PG' | 'Student Hostel' | 'Shared Room'
 
 export type VehicleType = 'Bike' | 'Car' | 'Scooty' | 'Bicycle' | 'Luxury Car' | 'Luxury Cars';
 export type TransmissionType = 'Manual' | 'Automatic';
-export type FuelType = 'Petrol' | 'Diesel' | 'Electric' | 'Hybrid';
+export type FuelType = 'Petrol' | 'Diesel' | 'Electric' | 'Hybrid' | 'EV' | 'CNG';
 
 export type GeneralItemCategory = 'Camera & Photography' | 'Home Appliances' | 'Furniture' | 'Gadgets & Gaming' | 'Event & Sound' | 'Power Tools' | 'Camping & Fitness';
 
@@ -33,6 +33,8 @@ export interface LandlordUser {
   address?: string;
   idProofNumber?: string;
   emailVerified?: boolean;
+  upiId?: string;
+  upiQrUrl?: string;
 }
 
 export interface TenantUser {
@@ -52,6 +54,7 @@ export interface UserProfile {
   password?: string;
   createdAt: string;
   avatarUrl?: string;
+  avatar?: string;
   emailVerified?: boolean;
   address?: string;
   city?: string;
@@ -80,9 +83,13 @@ export interface Property {
   id: string;
   title: string;
   category: MainCategory;
+  type?: string;
   subType: ResidentialType | CommercialType | StudentHousingType;
   rentPerMonth: number;
+  price?: number;
   deposit: number;
+  securityDeposit?: number;
+  bhk?: string;
   location: string;
   state?: string;
   district?: string;
@@ -93,6 +100,7 @@ export interface Property {
   distances?: PropertyDistanceMatrix;
   transitTimes?: PropertyTransitTimes;
   images: string[];
+  imageUrl?: string;
   bedrooms?: number;
   bathrooms?: number;
   areaSqFt: number;
@@ -102,6 +110,8 @@ export interface Property {
   ownerName: string;
   ownerContact: string;
   ownerVerified: boolean;
+  ownerUpiId?: string;
+  ownerQrUrl?: string;
   status?: 'Approved' | 'Pending Approval' | 'Rejected';
   aiSafetyScore?: number;
   aiFlags?: string[];
@@ -138,10 +148,13 @@ export interface Hotel {
   title: string;
   city: string;
   location: string;
+  pricePerNight?: number;
   state?: string;
   rating: number;
   reviewsCount: number;
   images: string[];
+  imageUrl?: string;
+  price?: number;
   description: string;
   amenities: string[];
   checkInTime: string;
@@ -173,10 +186,13 @@ export interface Restaurant {
   title: string;
   city: string;
   location: string;
+  pricePerPerson?: number;
   state?: string;
   rating: number;
   reviewsCount: number;
   images: string[];
+  imageUrl?: string;
+  price?: number;
   description: string;
   cuisine: string[];
   openingHours: string;
@@ -187,6 +203,7 @@ export interface Restaurant {
   ownerId?: string;
   ownerName: string;
   ownerContact: string;
+  phone?: string;
   ownerVerified: boolean;
   status: 'Approved' | 'Pending Approval' | 'Rejected';
   isAvailable: boolean;
@@ -208,10 +225,14 @@ export interface Library {
   title: string;
   city: string;
   location: string;
+  monthlyFee?: number;
   state?: string;
   rating: number;
   reviewsCount: number;
   images: string[];
+  imageUrl?: string;
+  rentPerMonth?: number;
+  price?: number;
   description: string;
   openingHours: string;
   totalSeats: number;
@@ -276,6 +297,9 @@ export interface Vehicle {
   district?: string;
   city: string;
   images: string[];
+  imageUrl?: string;
+  pricePerDay?: number;
+  price?: number;
   transmission?: TransmissionType;
   fuelType: FuelType;
   seats?: number;
@@ -287,6 +311,8 @@ export interface Vehicle {
   ownerId?: string;
   ownerName: string;
   ownerContact: string;
+  ownerVerified?: boolean;
+  description?: string;
   status?: 'Approved' | 'Pending Approval' | 'Rejected';
   aiSafetyScore?: number;
   aiFlags?: string[];
@@ -294,6 +320,8 @@ export interface Vehicle {
   currentLat?: number;
   currentLng?: number;
   speedKmh?: number;
+  fuelLevelPercent?: number;
+  type?: VehicleType;
   licensePlate: string;
   isAvailable?: boolean;
 
@@ -367,6 +395,10 @@ export interface GeneralItem {
   district?: string;
   city: string;
   images: string[];
+  image?: string;
+  imageUrl?: string;
+  price?: number;
+  pricePerDay?: number;
   specs: string[];
   ownerId?: string;
   ownerName: string;
@@ -388,11 +420,12 @@ export interface RentalBooking {
   itemImage: string;
   startDate: string;
   endDate?: string;
+  duration?: string;
   monthsCount?: number;
   daysCount?: number;
   totalPrice: number;
   withDriver?: boolean;
-  status: 'Pending Verification' | 'Owner Reviewing' | 'Approved' | 'Booking Confirmed' | 'Vehicle Picked Up' | 'Rental Active' | 'Return Pending' | 'Pending Requests' | 'Accepted' | 'Rejected' | 'Completed' | 'Active' | 'Cancelled';
+  status: 'Pending' | 'Pending Verification' | 'Owner Reviewing' | 'Approved' | 'Booking Confirmed' | 'Vehicle Picked Up' | 'Rental Active' | 'Return Pending' | 'Pending Requests' | 'Accepted' | 'Rejected' | 'Declined' | 'Completed' | 'Active' | 'Cancelled';
   trackingActive?: boolean;
   currentLat?: number;
   currentLng?: number;
@@ -411,6 +444,11 @@ export interface RentalBooking {
   /* Verification & Token Fields */
   tokenPaidAmount?: number;
   tokenPaymentStatus?: 'Paid' | 'Pending' | 'Refunded';
+  paymentMethod?: string;
+  utrNumber?: string;
+  paymentTxnId?: string;
+  ownerUpiId?: string;
+  ownerQrUrl?: string;
   userEmail?: string;
   dob?: string;
   currentAddress?: string;
@@ -436,8 +474,32 @@ export interface RentalBooking {
   utilityCharges?: string;
   fullAddress?: string;
   amenities?: string[];
-  paymentMethod?: string;
   transactionId?: string;
+
+  /* Comprehensive Pricing & Math Calculation Fields */
+  monthlyRent?: number;
+  rentPerDay?: number;
+  rentPerHour?: number;
+  securityDeposit?: number;
+  deposit?: number;
+  durationCount?: number;
+  durationUnit?: 'hours' | 'days' | 'nights' | 'months';
+  unitPrice?: number;
+  baseRentalPrice?: number;
+  maintenanceCharges?: number;
+  deliveryFee?: number;
+  taxAmount?: number;
+  platformFee?: number;
+  grossPayableAmount?: number;
+  balanceDueAtHandover?: number;
+  hotelRoomsCount?: number;
+  hotelNightsCount?: number;
+
+  /* Automatic Owner Mobile SMS Alert Fields */
+  ownerSmsAlertSent?: boolean;
+  ownerSmsAlertText?: string;
+  ownerSmsDeliveredTo?: string;
+  ownerSmsTimestamp?: string;
   
   /* Vehicle Rental & Digital Inspection Fields */
   vehicleType?: 'Bike' | 'Scooter' | 'Car' | 'SUV' | 'EV';
@@ -579,19 +641,27 @@ export interface ClothingItem {
   clothingType: 'Wedding Lehenga' | 'Sherwani' | 'Designer Suit' | 'Evening Gown' | 'Pre-wedding Outfit' | 'Traditional Saree' | 'Party Wear' | 'Shirt' | 'Dress' | 'Jacket' | 'Jeans/Pants' | 'Other';
   size: 'XS' | 'S' | 'M' | 'L' | 'XL' | 'XXL' | 'Free Size' | 'Custom';
   rentPerDay: number;
+  price?: number;
   deposit: number;
+  securityDeposit?: number;
   location: string;
   city: string;
   images: string[];
+  imageUrl?: string;
+  color?: string;
   dryCleaned: boolean;
   ownerId?: string;
   ownerName: string;
   ownerContact: string;
+  ownerVerified?: boolean;
   status?: 'Approved' | 'Pending Approval' | 'Rejected';
   rating: number;
   reviewsCount: number;
   description: string;
   isAvailable?: boolean;
+  attireType?: string;
+  rentPricePerDay?: number;
+  rate1Day?: number;
 
   /* 10-Section Clothing Listing Attributes */
   brand?: string;
@@ -662,16 +732,21 @@ export interface SportsTurfItem {
   location: string;
   city: string;
   images: string[];
+  imageUrl?: string;
+  sportType?: string;
   amenities: string[];
   floodLights: boolean;
   ownerId?: string;
   ownerName: string;
   ownerContact: string;
+  ownerVerified?: boolean;
   status?: 'Approved' | 'Pending Approval' | 'Rejected';
   rating: number;
   reviewsCount: number;
   description: string;
   isAvailable?: boolean;
+  pricePerHour?: number;
+  price?: number;
 }
 
 /* Global App Notification */

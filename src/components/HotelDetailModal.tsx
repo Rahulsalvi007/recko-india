@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Hotel, HotelRoom } from '../types';
-import { X, Star, MapPin, Calendar, Users, CheckCircle, Sparkles, Coffee, ShieldCheck, Navigation, MessageCircle, MessageSquare } from 'lucide-react';
+import { X, Star, MapPin, Calendar, Users, CheckCircle, Sparkles, Coffee, ShieldCheck, Navigation, MessageCircle, MessageSquare, Phone } from 'lucide-react';
 import { openWhatsAppChat } from '../utils/whatsapp';
+import { makePhoneCall } from '../utils/phoneCall';
 
 interface HotelDetailModalProps {
   hotel: Hotel;
@@ -256,6 +257,15 @@ export const HotelDetailModal: React.FC<HotelDetailModalProps> = ({
                 >
                   <MessageCircle className="h-4 w-4" />
                   <span>WhatsApp</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => makePhoneCall(hotel.ownerContact || '+91 98765 43210', hotel.ownerName || hotel.title)}
+                  className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs px-4 py-3 rounded-2xl transition-all flex items-center space-x-1.5 cursor-pointer shadow-md"
+                >
+                  <Phone className="h-4 w-4" />
+                  <span>Call Hotel</span>
                 </button>
 
                 <button

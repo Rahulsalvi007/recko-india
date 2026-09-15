@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { X, Trophy, Calendar, Clock, Zap, MapPin, CheckCircle2, ShieldCheck, QrCode, Share2, Plus, Users } from 'lucide-react';
 import { SportsTurfItem, RentalBooking, AppNotification } from '../types';
 import { saveDocument } from '../lib/firebase';
+import { getISTDateString } from '../utils/dateTimeUtils';
+import { formatINR } from '../utils/financialCalculations';
 
 interface SportsTurfBookingModalProps {
   isOpen: boolean;
@@ -20,11 +22,11 @@ export const SportsTurfBookingModal: React.FC<SportsTurfBookingModalProps> = ({
   currentUserName,
   onBookingConfirmed
 }) => {
-  const [bookingDate, setBookingDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [bookingDate, setBookingDate] = useState<string>(() => getISTDateString());
   const [durationHours, setDurationHours] = useState<number>(2);
   const [startTimeSlot, setStartTimeSlot] = useState<string>('07:00 PM (Night Floodlight)');
-  const [captainName, setCaptainName] = useState<string>(currentUserName || 'Rahul Sharma');
-  const [captainPhone, setCaptainPhone] = useState<string>('+91 98765 43210');
+  const [captainName, setCaptainName] = useState<string>(currentUserName || '');
+  const [captainPhone, setCaptainPhone] = useState<string>('');
   
   // Add-on Equipment Options
   const [needCricketGear, setNeedCricketGear] = useState<boolean>(true);
@@ -33,6 +35,7 @@ export const SportsTurfBookingModal: React.FC<SportsTurfBookingModalProps> = ({
 
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
   const [confirmedBookingId, setConfirmedBookingId] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   if (!isOpen || !turf) return null;
 
@@ -48,58 +51,82 @@ export const SportsTurfBookingModal: React.FC<SportsTurfBookingModalProps> = ({
   ];
 
   // Calculation
-  const hourlyRate = turf.rentPerHour || 1200;
+  const hourlyRate = turf.rentPerHour || turf.pricePerHour || turf.price || 0;
   const gearCost = (needCricketGear ? 150 : 0) + (needBibs ? 100 : 0) + (needUmpire ? 300 : 0);
   const totalPrice = (hourlyRate * durationHours) + gearCost;
   const tokenAmount = Math.min(200, Math.round(totalPrice * 0.15));
 
   const handleConfirmTurfBooking = async (e: React.FormEvent) => {
     e.preventDefault();
-    const bookingId = `TURF-SLOT-${Date.now().toString(36).toUpperCase()}`;
-    setConfirmedBookingId(bookingId);
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
-    const newBooking: RentalBooking = {
-      id: bookingId,
-      type: 'sports_turf',
-      itemId: turf.id,
-      itemTitle: `${turf.title} (${durationHours} Hours Ground Slot)`,
-      itemImage: turf.images?.[0] || 'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?w=800&q=80',
-      startDate: bookingDate,
-      daysCount: 1,
-      totalPrice: totalPrice,
-      tokenPaidAmount: tokenAmount,
-      tokenPaymentStatus: 'Paid',
-      status: 'Booking Confirmed',
-      userName: captainName,
-      userPhone: captainPhone,
-      userEmail: currentUserEmail || 'captain@renthub.in',
-      ownerId: turf.ownerId || 'owner-verified',
-      ownerName: turf.title,
-      ownerContact: '+91 98765 43210',
-      bookingDate: new Date().toISOString()
-    };
+    try {
+      const bookingId = `TURF-SLOT-${Date.now().toString(36).toUpperCase()}`;
+      setConfirmedBookingId(bookingId);
 
-    // Save to Firestore
-    await saveDocument('bookings', newBooking.id, newBooking);
+      const newBooking: RentalBooking = {
+        id: bookingId,
+        type: 'sports_turf',
+        itemId: turf.id,
+        itemTitle: `${turf.title} (${durationHours} Hours Ground Slot)`,
+        itemImage: turf.images?.[0] || 'https://images.unsplash.com/photo-1517649763962-0c623066013b?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
+        startDate: bookingDate,
+        daysCount: 1,
+        totalPrice: totalPrice,
+        tokenPaidAmount: tokenAmount,
+        tokenPaymentStatus: 'Paid',
+        status: 'Booking Confirmed',
+        userName: captainName,
+        userPhone: captainPhone,
+        userEmail: currentUserEmail || 'captain@renthub.in',
+        ownerId: turf.ownerId || 'owner-verified',
+        ownerName: turf.title,
+        ownerContact: '+91 98765 43210',
+        bookingDate: new Date().toISOString()
+      };
 
-    // Send Notification to Turf Manager
-    const notif: AppNotification = {
-      id: `notif-turf-${Date.now()}`,
-      title: `🏏 New Turf Ground Slot Booked (${durationHours} Hours)`,
-      message: `Captain ${captainName} booked ${turf.title} for ${durationHours} hours on ${bookingDate} starting at ${startTimeSlot}. Token Paid: ₹${tokenAmount}`,
-      type: 'system',
-      timestamp: 'Just now',
-      read: false,
-      ownerId: turf.ownerId,
-      userEmail: currentUserEmail
-    };
-    await saveDocument('notifications', notif.id, notif);
+      // Save to Firestore
+      await saveDocument('bookings', newBooking.id, newBooking);
 
-    if (onBookingConfirmed) {
-      onBookingConfirmed(newBooking);
+      // Send Notification to Turf Manager
+      const notif: AppNotification = {
+        id: `notif-turf-${Date.now()}`,
+        title: `🏏 New Turf Ground Slot Booked (${durationHours} Hours)`,
+        message: `Captain ${captainName} booked ${turf.title} for ${durationHours} hours on ${bookingDate} starting at ${startTimeSlot}. Token Paid: ${formatINR(tokenAmount)}`,
+        type: 'booking',
+        timestamp: 'Just now',
+        read: false,
+        ownerId: turf.ownerId,
+        recipientRole: 'landlord'
+      };
+      await saveDocument('notifications', notif.id, notif);
+
+      // Send User Confirmation Notification if email available
+      if (currentUserEmail) {
+        const userNotif: AppNotification = {
+          id: `notif-turf-user-${Date.now()}`,
+          title: `🏏 Turf Booking Confirmed: ${turf.title}`,
+          message: `Your booking for ${durationHours} hours on ${bookingDate} at ${startTimeSlot} has been confirmed. Booking ID: ${bookingId}`,
+          type: 'booking',
+          timestamp: 'Just now',
+          read: false,
+          userEmail: currentUserEmail,
+          recipientRole: 'user'
+        };
+        await saveDocument('notifications', userNotif.id, userNotif);
+      }
+
+      if (onBookingConfirmed) {
+        onBookingConfirmed(newBooking);
+      }
+
+      setIsSuccess(true);
+    } catch (err) {
+      console.error('Turf booking error:', err);
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setIsSuccess(true);
   };
 
   const handleShareWhatsApp = () => {
@@ -178,7 +205,7 @@ export const SportsTurfBookingModal: React.FC<SportsTurfBookingModalProps> = ({
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400 block">Duration & Rate</span>
-                    <strong className="text-white font-mono">{durationHours} Hours (₹{turf.rentPerHour}/hr)</strong>
+                    <strong className="text-white font-mono">{durationHours} Hours ({formatINR(turf.rentPerHour || hourlyRate)}/hr)</strong>
                   </div>
                 </div>
 
@@ -187,7 +214,7 @@ export const SportsTurfBookingModal: React.FC<SportsTurfBookingModalProps> = ({
                     <ShieldCheck className="h-4 w-4" />
                     <span>Exclusive Ground Access Guaranteed</span>
                   </span>
-                  <span className="text-amber-400 font-bold">Token Paid: ₹{tokenAmount}</span>
+                  <span className="text-amber-400 font-bold">Token Paid: {formatINR(tokenAmount)}</span>
                 </div>
               </div>
 
@@ -217,7 +244,7 @@ export const SportsTurfBookingModal: React.FC<SportsTurfBookingModalProps> = ({
               <div className="bg-emerald-500/10 border border-emerald-500/30 p-3.5 rounded-2xl flex items-center justify-between">
                 <div className="space-y-0.5">
                   <span className="text-[10px] font-black text-emerald-400 uppercase tracking-wide">Ground Rent Rate</span>
-                  <p className="text-xl font-black text-slate-900 dark:text-white">₹{hourlyRate} <span className="text-xs font-normal text-slate-400">/ hour</span></p>
+                  <p className="text-xl font-black text-slate-900 dark:text-white">{formatINR(hourlyRate)} <span className="text-xs font-normal text-slate-400">/ hour</span></p>
                 </div>
                 {turf.floodLights && (
                   <span className="bg-blue-600 text-white text-[10px] font-black px-3 py-1 rounded-xl flex items-center space-x-1">
@@ -360,11 +387,11 @@ export const SportsTurfBookingModal: React.FC<SportsTurfBookingModalProps> = ({
               <div className="bg-slate-950 text-white p-4 rounded-2xl border border-slate-800 flex justify-between items-center font-mono">
                 <div>
                   <span className="text-[10px] text-slate-400 block uppercase font-sans font-bold">Total Ground Rent ({durationHours} Hrs)</span>
-                  <span className="text-xl font-black text-emerald-400">₹{totalPrice.toLocaleString('en-IN')}</span>
+                  <span className="text-xl font-black text-emerald-400">{formatINR(totalPrice)}</span>
                 </div>
                 <div className="text-right">
                   <span className="text-[10px] text-slate-400 block uppercase font-sans font-bold">Token to Hold Slot</span>
-                  <span className="text-sm font-black text-amber-400">₹{tokenAmount} Token</span>
+                  <span className="text-sm font-black text-amber-400">{formatINR(tokenAmount)} Token</span>
                 </div>
               </div>
 
@@ -374,7 +401,7 @@ export const SportsTurfBookingModal: React.FC<SportsTurfBookingModalProps> = ({
                 className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black py-3.5 rounded-2xl shadow-xl shadow-emerald-500/20 cursor-pointer transition-all text-xs flex items-center justify-center space-x-2"
               >
                 <Trophy className="h-4 w-4" />
-                <span>Confirm Ground Slot & Pay ₹{tokenAmount} Token</span>
+                <span>Confirm Ground Slot & Pay {formatINR(tokenAmount)} Token</span>
               </button>
             </form>
           )}

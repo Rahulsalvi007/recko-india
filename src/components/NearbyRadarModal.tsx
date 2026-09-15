@@ -19,7 +19,8 @@ import {
   UtensilsCrossed,
   BookOpen,
   Layers,
-  Sparkles
+  Sparkles,
+  Search
 } from 'lucide-react';
 import {
   Property,
@@ -31,10 +32,12 @@ import {
   Restaurant,
   Library
 } from '../types';
+import { getCityCoordinates, CITY_COORDINATES_MAP } from '../utils/aiLocationEngine';
 
 interface NearbyRadarModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialCity?: string;
   availableProperties?: Property[];
   availableVehicles?: Vehicle[];
   availableClothing?: ClothingItem[];
@@ -55,64 +58,16 @@ interface NearbyRadarModalProps {
 
 export type RadarAssetFilter = 'all' | 'property' | 'vehicle' | 'clothing' | 'sports_turf' | 'general' | 'hotel' | 'restaurant' | 'library';
 
-// Known Indian Cities coordinates dictionary for distance precision
-const KNOWN_CITY_COORDS: { [key: string]: { lat: number; lng: number; displayName: string } } = {
-  bangalore: { lat: 12.9141, lng: 77.6412, displayName: 'Bangalore' },
-  bengaluru: { lat: 12.9141, lng: 77.6412, displayName: 'Bengaluru' },
-  hsr: { lat: 12.9141, lng: 77.6412, displayName: 'HSR Layout, Bangalore' },
-  koramangala: { lat: 12.9352, lng: 77.6245, displayName: 'Koramangala, Bangalore' },
-  indiranagar: { lat: 12.9784, lng: 77.6408, displayName: 'Indiranagar, Bangalore' },
-  whitefield: { lat: 12.9698, lng: 77.7500, displayName: 'Whitefield, Bangalore' },
-
-  delhi: { lat: 28.6901, lng: 77.2066, displayName: 'Delhi NCR' },
-  ncr: { lat: 28.6139, lng: 77.2090, displayName: 'Delhi NCR' },
-  gurgaon: { lat: 28.4950, lng: 77.0895, displayName: 'Gurugram / Gurgaon' },
-  gurugram: { lat: 28.4950, lng: 77.0895, displayName: 'Gurugram' },
-  noida: { lat: 28.5355, lng: 77.3910, displayName: 'Noida' },
-  'hauz khas': { lat: 28.5494, lng: 77.2001, displayName: 'Hauz Khas, Delhi' },
-
-  mumbai: { lat: 19.0600, lng: 72.8680, displayName: 'Mumbai' },
-  bandra: { lat: 19.0596, lng: 72.8295, displayName: 'Bandra, Mumbai' },
-  bkc: { lat: 19.0600, lng: 72.8680, displayName: 'BKC, Mumbai' },
-  andheri: { lat: 19.1136, lng: 72.8697, displayName: 'Andheri, Mumbai' },
-
-  pune: { lat: 18.5679, lng: 73.9143, displayName: 'Pune' },
-  hinjewadi: { lat: 18.5912, lng: 73.7389, displayName: 'Hinjewadi, Pune' },
-  viman: { lat: 18.5679, lng: 73.9143, displayName: 'Viman Nagar, Pune' },
-  'fc road': { lat: 18.5204, lng: 73.8415, displayName: 'FC Road, Pune' },
-
-  hyderabad: { lat: 17.4435, lng: 78.3772, displayName: 'Hyderabad' },
-  hitec: { lat: 17.4435, lng: 78.3772, displayName: 'HITEC City, Hyderabad' },
-  gachibowli: { lat: 17.4401, lng: 78.3489, displayName: 'Gachibowli, Hyderabad' },
-
-  jaipur: { lat: 26.9124, lng: 75.7873, displayName: 'Jaipur' },
-  'c-scheme': { lat: 26.9100, lng: 75.8000, displayName: 'C-Scheme, Jaipur' },
-  'malviya nagar': { lat: 26.8530, lng: 75.8188, displayName: 'Malviya Nagar, Jaipur' },
-
-  udaipur: { lat: 24.5854, lng: 73.7125, displayName: 'Udaipur' },
-  bhuwana: { lat: 24.6200, lng: 73.7050, displayName: 'Bhuwana, Udaipur' },
-
-  jodhpur: { lat: 26.2389, lng: 73.0243, displayName: 'Jodhpur' },
-  kota: { lat: 25.2138, lng: 75.8648, displayName: 'Kota' },
-  indore: { lat: 22.7533, lng: 75.8937, displayName: 'Indore' },
-  bhopal: { lat: 23.2599, lng: 77.4126, displayName: 'Bhopal' },
-  ahmedabad: { lat: 23.0225, lng: 72.5714, displayName: 'Ahmedabad' },
-  surat: { lat: 21.1702, lng: 72.8311, displayName: 'Surat' },
-  chennai: { lat: 13.0827, lng: 80.2707, displayName: 'Chennai' },
-  kolkata: { lat: 22.5726, lng: 88.3639, displayName: 'Kolkata' },
-  chandigarh: { lat: 30.7333, lng: 76.7794, displayName: 'Chandigarh' },
-  lucknow: { lat: 26.8467, lng: 80.9462, displayName: 'Lucknow' },
-  goa: { lat: 15.2993, lng: 74.1240, displayName: 'Goa' },
-  varanasi: { lat: 25.3176, lng: 82.9739, displayName: 'Varanasi' }
-};
-
-// Haversine Distance Formula in Kilometers
+// Haversine Physical Distance Formula in Kilometers
 function calculateHaversineDistance(
   lat1: number,
   lon1: number,
   lat2: number,
   lon2: number
 ): number {
+  if (!isFinite(lat1) || !isFinite(lon1) || !isFinite(lat2) || !isFinite(lon2)) return 999.9;
+  if (Math.abs(lat1) > 90 || Math.abs(lat2) > 90 || Math.abs(lon1) > 180 || Math.abs(lon2) > 180) return 999.9;
+  if (lat1 === lat2 && lon1 === lon2) return 0.3;
   const R = 6371; // Earth radius in km
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;
@@ -123,53 +78,48 @@ function calculateHaversineDistance(
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return Number((R * c).toFixed(1));
+  const distance = R * c;
+  return Number(distance.toFixed(1));
 }
 
-// Derive coordinates for items
-function getItemCoordinates(
-  itemCity?: string,
-  location?: string,
-  explicitLat?: number,
-  explicitLng?: number,
-  indexOffset: number = 0,
-  activeCenterLat: number = 12.9141,
-  activeCenterLng: number = 77.6412,
-  activeCityQuery: string = 'Bangalore'
+// Derive accurate true coordinates for items
+function getItemTrueCoordinates(
+  item: any,
+  indexOffset: number = 0
 ): { lat: number; lng: number } {
-  if (typeof explicitLat === 'number' && typeof explicitLng === 'number' && explicitLat !== 0) {
-    return { lat: explicitLat, lng: explicitLng };
+  // Explicit latitude & longitude check
+  if (item.coordinates?.lat && item.coordinates?.lng && item.coordinates.lat !== 0) {
+    return { lat: item.coordinates.lat, lng: item.coordinates.lng };
+  }
+  if (item.currentLat && item.currentLng && item.currentLat !== 0) {
+    return { lat: item.currentLat, lng: item.currentLng };
   }
 
-  const itemText = `${itemCity || ''} ${location || ''}`.toLowerCase().trim();
-  const queryLower = activeCityQuery.toLowerCase().trim();
+  // Geocode item's actual city & area location
+  const baseCoords = getCityCoordinates(item.city, item.location);
 
-  // If item's city matches current active city search query
-  if (itemCity && queryLower && (itemCity.toLowerCase().includes(queryLower) || queryLower.includes(itemCity.toLowerCase()))) {
-    const latOffset = ((indexOffset % 7) * 0.007 - 0.018);
-    const lngOffset = (((indexOffset + 3) % 7) * 0.007 - 0.018);
-    return { lat: activeCenterLat + latOffset, lng: activeCenterLng + lngOffset };
+  // Deterministic micro-spread (0.2 to 2.5 km) so items within the same city don't stack on 0.0 km
+  const str = `${item.id || ''}${item.title || ''}${item.location || ''}`;
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
   }
+  const positiveHash = Math.abs(hash) + indexOffset;
 
-  // Lookup in city dictionary
-  for (const key of Object.keys(KNOWN_CITY_COORDS)) {
-    if (itemText.includes(key)) {
-      const cityData = KNOWN_CITY_COORDS[key];
-      const latOffset = ((indexOffset % 5) * 0.009 - 0.018);
-      const lngOffset = (((indexOffset + 2) % 5) * 0.009 - 0.018);
-      return { lat: cityData.lat + latOffset, lng: cityData.lng + lngOffset };
-    }
-  }
+  const latOffset = ((positiveHash % 11) * 0.003 - 0.015);
+  const lngOffset = ((((positiveHash + 3) % 11) * 0.003) - 0.015);
 
-  // Default scattered offset around active center
-  const defaultLatOffset = ((indexOffset % 9) * 0.012 - 0.035);
-  const defaultLngOffset = (((indexOffset + 4) % 9) * 0.012 - 0.035);
-  return { lat: activeCenterLat + defaultLatOffset, lng: activeCenterLng + defaultLngOffset };
+  return {
+    lat: Number((baseCoords.lat + latOffset).toFixed(6)),
+    lng: Number((baseCoords.lng + lngOffset).toFixed(6))
+  };
 }
 
 export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
   isOpen,
   onClose,
+  initialCity = '',
   availableProperties = [],
   availableVehicles = [],
   availableClothing = [],
@@ -187,22 +137,58 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
   onSelectRestaurant,
   onSelectLibrary
 }) => {
-  const [userLat, setUserLat] = useState<number>(12.9141);
-  const [userLng, setUserLng] = useState<number>(77.6412);
-  const [userLocationName, setUserLocationName] = useState<string>('Bangalore, HSR Layout');
-  const [cityInput, setCityInput] = useState<string>('Bangalore');
+  const [cityInput, setCityInput] = useState<string>('');
+  const [userLat, setUserLat] = useState<number>(26.9124);
+  const [userLng, setUserLng] = useState<number>(75.7873);
+  const [userLocationName, setUserLocationName] = useState<string>('Jaipur Radar Center');
   const [radiusKm, setRadiusKm] = useState<number>(15);
   const [selectedAssetCategory, setSelectedAssetCategory] = useState<RadarAssetFilter>('all');
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [isGPSActive, setIsGPSActive] = useState<boolean>(false);
+  const [gpsBannerMsg, setGpsBannerMsg] = useState<string | null>(null);
 
-  // Trigger GPS auto-locate
+  // Initialize center coordinates when modal opens or initialCity changes
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const startCity = initialCity || '';
+    setCityInput('');
+    setGpsBannerMsg(null);
+    const coords = getCityCoordinates(startCity || 'Jaipur');
+    setUserLat(coords.lat);
+    setUserLng(coords.lng);
+    setUserLocationName(startCity ? `${startCity} Radar Center` : 'All Locations Radar Center');
+    setIsGPSActive(false);
+
+    // Auto-try browser GPS location silently
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = pos.coords.latitude;
+          const lng = pos.coords.longitude;
+          setUserLat(lat);
+          setUserLng(lng);
+          setUserLocationName(`Live Device GPS (${lat.toFixed(3)}, ${lng.toFixed(3)})`);
+          setIsGPSActive(true);
+        },
+        () => {
+          // Silently fallback to city radar center without setting any message banner
+          setIsGPSActive(false);
+        },
+        { timeout: 3000, enableHighAccuracy: false }
+      );
+    }
+  }, [isOpen, initialCity]);
+
+  // Trigger GPS auto-locate manually
   const handleGetGPSLocation = () => {
     if (!navigator.geolocation) {
-      alert('Geolocation is not supported by your browser.');
+      setGpsBannerMsg('Geolocation is not supported by your device browser.');
+      setTimeout(() => setGpsBannerMsg(null), 4000);
       return;
     }
     setIsLocating(true);
+    setGpsBannerMsg(null);
     navigator.geolocation.getCurrentPosition(
       (position) => {
         const lat = position.coords.latitude;
@@ -214,11 +200,23 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
         setIsLocating(false);
       },
       (error) => {
-        console.warn('GPS location error:', error);
         setIsLocating(false);
-        alert('Could not access live GPS. Reverting to selected city radar.');
+        setIsGPSActive(false);
+        const fallbackCity = cityInput || initialCity || 'Jaipur';
+        const coords = getCityCoordinates(fallbackCity);
+        setUserLat(coords.lat);
+        setUserLng(coords.lng);
+        setUserLocationName(`${fallbackCity} Radar Center`);
+        
+        const msg = error && error.code === 1
+          ? `📍 GPS Permission Blocked. Showing items near ${fallbackCity} Radar Center.`
+          : `📍 GPS Signal Unavailable. Showing items near ${fallbackCity} Radar Center.`;
+        
+        setGpsBannerMsg(msg);
+        // Auto-dismiss banner after 4 seconds
+        setTimeout(() => setGpsBannerMsg(null), 4000);
       },
-      { timeout: 8000, enableHighAccuracy: true }
+      { timeout: 5000, enableHighAccuracy: true }
     );
   };
 
@@ -226,28 +224,21 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
   const handleCitySearchChange = (cityName: string) => {
     setCityInput(cityName);
     setIsGPSActive(false);
-    const key = cityName.toLowerCase().trim();
-    for (const cityKey of Object.keys(KNOWN_CITY_COORDS)) {
-      if (key.includes(cityKey) || cityKey.includes(key)) {
-        const c = KNOWN_CITY_COORDS[cityKey];
-        setUserLat(c.lat);
-        setUserLng(c.lng);
-        setUserLocationName(c.displayName);
-        return;
-      }
-    }
-    setUserLocationName(`${cityName} Radar Center`);
+    const coords = getCityCoordinates(cityName);
+    setUserLat(coords.lat);
+    setUserLng(coords.lng);
+    setUserLocationName(`${cityName || 'Selected'} Radar Center`);
   };
 
   if (!isOpen) return null;
 
-  // Process and compute distances for ALL rental asset types
+  // Process and compute true Haversine physical distances for ALL rental asset types
   const getNearbyListings = () => {
     const items: any[] = [];
 
     // 1. Properties
     availableProperties.forEach((p, idx) => {
-      const coords = getItemCoordinates(p.city, p.location, p.coordinates?.lat, p.coordinates?.lng, idx, userLat, userLng, cityInput);
+      const coords = getItemTrueCoordinates(p, idx);
       const dist = calculateHaversineDistance(userLat, userLng, coords.lat, coords.lng);
 
       items.push({
@@ -271,7 +262,7 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
 
     // 2. Vehicles
     availableVehicles.forEach((v, idx) => {
-      const coords = getItemCoordinates(v.city, v.location, v.coordinates?.lat, v.coordinates?.lng, idx, userLat, userLng, cityInput);
+      const coords = getItemTrueCoordinates(v, idx);
       const dist = calculateHaversineDistance(userLat, userLng, coords.lat, coords.lng);
 
       items.push({
@@ -295,7 +286,7 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
 
     // 3. Clothing / Wedding Outfits
     availableClothing.forEach((c, idx) => {
-      const coords = getItemCoordinates(c.city, c.location, undefined, undefined, idx, userLat, userLng, cityInput);
+      const coords = getItemTrueCoordinates(c, idx);
       const dist = calculateHaversineDistance(userLat, userLng, coords.lat, coords.lng);
 
       items.push({
@@ -319,21 +310,21 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
 
     // 4. Sports Turfs
     availableSportsTurfs.forEach((s, idx) => {
-      const coords = getItemCoordinates(s.city, s.location, undefined, undefined, idx, userLat, userLng, cityInput);
+      const coords = getItemTrueCoordinates(s, idx);
       const dist = calculateHaversineDistance(userLat, userLng, coords.lat, coords.lng);
 
       items.push({
         id: s.id,
         rawObj: s,
         title: s.title,
-        categoryType: `Sports Turf (${s.sportType})`,
+        categoryType: `Sports Turf (${s.turfType || 'Arena'})`,
         catKey: 'sports_turf',
         location: s.location,
         city: s.city,
-        price: Number(s.pricePerHour || (s as any).price || 0),
+        price: Number(s.rentPerHour || (s as any).price || 0),
         priceUnit: '/hour',
         rating: s.rating,
-        image: s.images[0] || 'https://images.unsplash.com/photo-1529900748604-07564a03e7a6',
+        image: s.images[0] || 'https://images.unsplash.com/photo-1517649763962-0c623066013b?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
         isAvailable: s.isAvailable !== false,
         distanceKm: dist,
         ownerVerified: s.ownerVerified,
@@ -343,7 +334,7 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
 
     // 5. General Items / Gadgets
     availableGeneralItems.forEach((g, idx) => {
-      const coords = getItemCoordinates(g.city, g.location, undefined, undefined, idx, userLat, userLng, cityInput);
+      const coords = getItemTrueCoordinates(g, idx);
       const dist = calculateHaversineDistance(userLat, userLng, coords.lat, coords.lng);
 
       items.push({
@@ -354,7 +345,7 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
         catKey: 'general',
         location: g.location,
         city: g.city,
-        price: Number(g.pricePerDay || (g as any).price || 0),
+        price: Number(g.rentPerDay || (g as any).price || 0),
         priceUnit: '/day',
         rating: g.rating,
         image: g.images[0] || 'https://images.unsplash.com/photo-1526738549149-8e07eca6c147',
@@ -367,7 +358,7 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
 
     // 6. Hotels
     availableHotels.forEach((h, idx) => {
-      const coords = getItemCoordinates(h.city, h.location, undefined, undefined, idx, userLat, userLng, cityInput);
+      const coords = getItemTrueCoordinates(h, idx);
       const dist = calculateHaversineDistance(userLat, userLng, coords.lat, coords.lng);
 
       items.push({
@@ -391,7 +382,7 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
 
     // 7. Restaurants / Dining
     availableRestaurants.forEach((r, idx) => {
-      const coords = getItemCoordinates(r.city, r.location, undefined, undefined, idx, userLat, userLng, cityInput);
+      const coords = getItemTrueCoordinates(r, idx);
       const dist = calculateHaversineDistance(userLat, userLng, coords.lat, coords.lng);
 
       items.push({
@@ -415,7 +406,7 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
 
     // 8. Libraries / Study Pods
     availableLibraries.forEach((l, idx) => {
-      const coords = getItemCoordinates(l.city, l.location, undefined, undefined, idx, userLat, userLng, cityInput);
+      const coords = getItemTrueCoordinates(l, idx);
       const dist = calculateHaversineDistance(userLat, userLng, coords.lat, coords.lng);
 
       items.push({
@@ -500,20 +491,21 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
     }
   ];
 
-  // Filter by selected category & distance
+  // Filter by selected category & distance radius
   const categoryFilteredItems = allItems.filter((item) => {
     if (selectedAssetCategory === 'all') return true;
     return item.catKey === selectedAssetCategory;
   });
 
+  // Filter items within radius (500km threshold means All India)
   const radiusFilteredItems = categoryFilteredItems
-    .filter((item) => item.distanceKm <= radiusKm)
+    .filter((item) => radiusKm >= 500 || item.distanceKm <= radiusKm)
     .sort((a, b) => a.distanceKm - b.distanceKm);
 
-  // Fallback to nearest if 0 items in small radius
+  // Fallback if 0 items in selected small radius
   const displayItems = radiusFilteredItems.length > 0
     ? radiusFilteredItems
-    : categoryFilteredItems.sort((a, b) => a.distanceKm - b.distanceKm).slice(0, 8);
+    : categoryFilteredItems.sort((a, b) => a.distanceKm - b.distanceKm);
 
   const handleItemClick = (item: any) => {
     onClose();
@@ -550,12 +542,39 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
     }
   };
 
+  const cityListOptions = [
+    'Jaipur',
+    'Udaipur',
+    'Jodhpur',
+    'Kota',
+    'Ajmer',
+    'Bikaner',
+    'Bhilwara',
+    'Delhi',
+    'Noida',
+    'Gurgaon',
+    'Mumbai',
+    'Pune',
+    'Ahmedabad',
+    'Surat',
+    'Indore',
+    'Bhopal',
+    'Bangalore',
+    'Hyderabad',
+    'Chennai',
+    'Kolkata',
+    'Chandigarh',
+    'Dehradun',
+    'Lucknow',
+    'Goa'
+  ];
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
-      {/* Luxury Container: White in Light mode, Pure Black in Dark mode */}
+      {/* Luxury Container */}
       <div className="bg-white dark:bg-black border border-amber-400/40 text-slate-900 dark:text-white w-full max-w-5xl rounded-3xl shadow-2xl overflow-hidden my-auto max-h-[94vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
         
-        {/* Header - Slate Dark Background with Gold Accent Badge */}
+        {/* Header */}
         <div className="bg-slate-900 dark:bg-zinc-950 p-4 sm:p-5 text-white border-b border-amber-400/30 flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-3.5">
             <div className="p-3 bg-gradient-to-tr from-amber-500 via-amber-400 to-yellow-400 text-slate-950 rounded-2xl shadow-md shrink-0 font-black">
@@ -571,11 +590,11 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
                     ? 'bg-amber-400 text-slate-950' 
                     : 'bg-slate-800 text-amber-300 border border-amber-400/30'
                 }`}>
-                  {isGPSActive ? 'Live GPS Active' : 'City Mode'}
+                  {isGPSActive ? 'Live Device GPS Active' : 'City Radar Mode'}
                 </span>
               </div>
               <p className="text-amber-300/90 text-xs font-medium mt-0.5">
-                Explore nearby Cars, Bikes, Wedding Clothes, Sports Turfs, Appliances, Flats & Hotels within your physical radius.
+                Physical Haversine Radius distance calculation for all Properties, Vehicles, Clothes, Turfs & Hotels.
               </p>
             </div>
           </div>
@@ -589,7 +608,17 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
           </button>
         </div>
 
-        {/* 3 Main Controls Bar (Auto GPS, City Search, Km Slider) */}
+        {/* GPS Permission / Alert Banner */}
+        {gpsBannerMsg && (
+          <div className="bg-amber-500/10 border-b border-amber-500/30 px-4 py-2 flex items-center justify-between text-xs text-amber-700 dark:text-amber-300 font-bold shrink-0">
+            <span>{gpsBannerMsg}</span>
+            <button type="button" onClick={() => setGpsBannerMsg(null)} className="text-amber-500 hover:text-amber-700 p-1 cursor-pointer">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* 3 Main Controls Bar (Auto GPS, City Selector, Radius Slider) */}
         <div className="p-3 sm:p-4 bg-slate-50 dark:bg-zinc-900 border-b border-slate-200 dark:border-zinc-800 space-y-3 shrink-0">
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center">
             
@@ -606,33 +635,43 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
                 }`}
               >
                 <LocateFixed className={`h-4 w-4 ${isLocating ? 'animate-spin text-amber-500' : isGPSActive ? 'text-slate-950' : 'text-amber-500'}`} />
-                <span>{isLocating ? 'Locating...' : 'Auto GPS Location'}</span>
+                <span>{isLocating ? 'Locating...' : '🎯 Auto Device GPS'}</span>
               </button>
             </div>
 
-            {/* Control 2: City Search Input */}
-            <div className="sm:col-span-5 relative">
-              <MapPin className="absolute left-3 top-3 h-4 w-4 text-amber-500" />
+            {/* Control 2: Free Text Search Bar */}
+            <div className="sm:col-span-5 relative flex items-center">
+              <Search className="absolute left-3 h-4 w-4 text-amber-500 z-10 pointer-events-none" />
               <input
                 type="text"
                 value={cityInput}
                 onChange={(e) => handleCitySearchChange(e.target.value)}
-                placeholder="Type City / Area (Jaipur, Udaipur, Bangalore, Delhi, Pune, Mumbai)..."
-                className="w-full pl-9 pr-3 py-2.5 bg-white dark:bg-zinc-950 border border-slate-300 dark:border-zinc-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-500"
+                placeholder="Search city, area or landmark (e.g. Jaipur, Udaipur, C-Scheme, Delhi)..."
+                className="w-full pl-9 pr-8 py-2.5 bg-white dark:bg-zinc-950 border border-slate-300 dark:border-zinc-700 rounded-xl text-xs font-bold text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all placeholder:text-slate-400 dark:placeholder:text-zinc-500"
               />
+              {cityInput && (
+                <button
+                  type="button"
+                  onClick={() => handleCitySearchChange('')}
+                  className="absolute right-2.5 text-slate-400 hover:text-slate-600 dark:hover:text-white text-xs p-1 cursor-pointer"
+                  title="Clear Search"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
 
-            {/* Control 3: Km Distance Selector */}
+            {/* Control 3: Radius Range Selector */}
             <div className="sm:col-span-4 bg-white dark:bg-zinc-950 border border-slate-300 dark:border-zinc-700 p-2.5 rounded-xl flex items-center justify-between space-x-2">
               <span className="text-xs font-bold text-slate-900 dark:text-white shrink-0 flex items-center space-x-1">
                 <Sliders className="h-3.5 w-3.5 text-amber-500" />
-                <span>Radius: <strong className="text-amber-600 dark:text-amber-400 font-black">{radiusKm} km</strong></span>
+                <span>Radius: <strong className="text-amber-600 dark:text-amber-400 font-black">{radiusKm >= 500 ? 'All India' : `${radiusKm} km`}</strong></span>
               </span>
               <input
                 type="range"
                 min={2}
-                max={50}
-                step={1}
+                max={500}
+                step={radiusKm > 50 ? 50 : 2}
                 value={radiusKm}
                 onChange={(e) => setRadiusKm(Number(e.target.value))}
                 className="w-full accent-amber-500 cursor-pointer"
@@ -645,7 +684,7 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-zinc-800 text-xs">
             <span className="text-[11px] font-bold text-slate-600 dark:text-zinc-400">Quick Distance Presets:</span>
             <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 sm:pb-0">
-              {[3, 5, 10, 15, 25, 50].map((preset) => (
+              {[3, 5, 10, 15, 25, 50, 100, 500].map((preset) => (
                 <button
                   key={preset}
                   onClick={() => setRadiusKm(preset)}
@@ -655,7 +694,7 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
                       : 'bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 border-slate-300 dark:border-zinc-700 hover:bg-slate-100 dark:hover:bg-zinc-700'
                   }`}
                 >
-                  {preset} km
+                  {preset >= 500 ? 'All India' : `${preset} km`}
                 </button>
               ))}
             </div>
@@ -680,7 +719,7 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
                   onClick={() => setSelectedAssetCategory(tab.key)}
                   className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center space-x-1.5 shrink-0 border ${
                     selectedAssetCategory === tab.key
-                      ? 'bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 text-slate-950 font-black border-amber-300 shadow-sm scale-102'
+                      ? 'bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 text-slate-950 font-black border-amber-300 shadow-sm'
                       : 'bg-white dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 border-slate-300 dark:border-zinc-700 hover:border-amber-400'
                   }`}
                 >
@@ -714,7 +753,7 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
 
             <div className="flex items-center space-x-2">
               <span className="font-bold text-amber-900 dark:text-amber-300 bg-white dark:bg-zinc-900 px-3 py-1 rounded-xl border border-amber-400/30 text-[11px] shadow-2xs">
-                Found {radiusFilteredItems.length} matching rentals within {radiusKm} km
+                Found {radiusFilteredItems.length} matching rentals within {radiusKm >= 500 ? 'All India' : `${radiusKm} km`}
               </span>
             </div>
           </div>
@@ -731,37 +770,27 @@ export const NearbyRadarModal: React.FC<NearbyRadarModalProps> = ({
                   No {selectedAssetCategory !== 'all' ? selectedAssetCategory.replace('_', ' ') : 'rentals'} found within {radiusKm} km
                 </h3>
                 <p className="text-xs text-slate-600 dark:text-zinc-400 font-medium">
-                  Aapke select kiye hue location (<strong className="text-slate-900 dark:text-white">{userLocationName}</strong>) ke {radiusKm} km radius me filhal koi listing nahi mili. Radius expand karein ya dusra category chunein.
+                  Aapke select kiye hue location (<strong className="text-slate-900 dark:text-white">{userLocationName}</strong>) ke {radiusKm} km radius me filhal koi listing nahi mili. Radius expand karein ya dusra city chunein.
                 </p>
               </div>
 
               <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setRadiusKm(25)}
-                  className="px-4 py-2 bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-500 text-slate-950 font-black text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center space-x-1.5"
+                  onClick={() => setRadiusKm(50)}
+                  className="px-4 py-2 bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 text-slate-950 font-black text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center space-x-1.5"
                 >
                   <Zap className="h-3.5 w-3.5" />
-                  <span>Expand Radius to 25 km</span>
+                  <span>Expand Radius to 50 km</span>
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => setRadiusKm(50)}
+                  onClick={() => setRadiusKm(500)}
                   className="px-4 py-2 bg-slate-900 text-white dark:bg-zinc-800 dark:text-amber-300 font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer border border-slate-800 dark:border-zinc-700"
                 >
-                  Expand Radius to 50 km
+                  Show All India Listings (500 km+)
                 </button>
-
-                {selectedAssetCategory !== 'all' && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedAssetCategory('all')}
-                    className="px-4 py-2 bg-slate-100 dark:bg-zinc-800 text-slate-900 dark:text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer border border-slate-300 dark:border-zinc-700"
-                  >
-                    View All Categories
-                  </button>
-                )}
               </div>
             </div>
           ) : null}

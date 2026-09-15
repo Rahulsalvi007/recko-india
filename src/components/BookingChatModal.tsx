@@ -12,10 +12,13 @@ import {
   IndianRupee,
   Clock,
   ExternalLink,
-  MessageCircle
+  MessageCircle,
+  Trash2
 } from 'lucide-react';
 import { RentalBooking } from '../types';
 import { openWhatsAppChat } from '../utils/whatsapp';
+import { makePhoneCall } from '../utils/phoneCall';
+import { formatISTTimeDisplay } from '../utils/dateTimeUtils';
 
 export interface ChatItemContext {
   id: string;
@@ -75,27 +78,15 @@ export const BookingChatModal: React.FC<BookingChatModalProps> = ({
     const saved = localStorage.getItem(storageKey);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((m: ChatMessage) => m.id !== 'msg-1' && m.id !== 'msg-2' && !m.id.startsWith('msg-reply-'));
+        }
       } catch (e) {
         // Fallback
       }
     }
-    return [
-      {
-        id: 'msg-1',
-        sender: 'renter',
-        senderName: rName,
-        text: `Hello ${ownerName}! I am interested in renting "${title}". Could you please share the availability and inspection details?`,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      },
-      {
-        id: 'msg-2',
-        sender: 'owner',
-        senderName: ownerName,
-        text: `Hi ${rName}! Thank you for reaching out on RentHub. Yes, "${title}" is in excellent verified condition and ready. Feel free to ask any questions or ping me on WhatsApp directly!`,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }
-    ];
+    return [];
   });
 
   useEffect(() => {
@@ -111,34 +102,11 @@ export const BookingChatModal: React.FC<BookingChatModalProps> = ({
       sender: currentRole === 'owner' ? 'owner' : 'renter',
       senderName: currentRole === 'owner' ? ownerName : rName,
       text: inputText.trim(),
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      time: formatISTTimeDisplay(new Date())
     };
 
     setMessages((prev) => [...prev, userMsg]);
-    const sentText = inputText.trim();
     setInputText('');
-
-    // Simulated quick owner response after 1.2s
-    setTimeout(() => {
-      let reply = `Thanks for your message! Everything is verified for "${title}". We can finalize your move-in / pickup whenever you are ready!`;
-      const lower = sentText.toLowerCase();
-      if (lower.includes('price') || lower.includes('discount') || lower.includes('rent')) {
-        reply = `Our listed rate (${priceText}) includes all basic amenities. For longer bookings, we offer attractive special waivers!`;
-      } else if (lower.includes('visit') || lower.includes('see') || lower.includes('look') || lower.includes('location')) {
-        reply = `You are welcome to visit! We are located in ${itemContext?.city || itemContext?.location || 'the prime area'}. Would you like the live Google Map location?`;
-      } else if (lower.includes('deposit') || lower.includes('security')) {
-        reply = `The security deposit is 100% refundable at the end of the rental period upon return inspection.`;
-      }
-
-      const autoReply: ChatMessage = {
-        id: `msg-reply-${Date.now()}`,
-        sender: currentRole === 'owner' ? 'renter' : 'owner',
-        senderName: currentRole === 'owner' ? rName : ownerName,
-        text: reply,
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      };
-      setMessages((prev) => [...prev, autoReply]);
-    }, 1200);
   };
 
   const quickReplies = currentRole === 'owner'
@@ -207,13 +175,33 @@ export const BookingChatModal: React.FC<BookingChatModalProps> = ({
 
             {/* Direct Call Button */}
             {ownerContact && (
-              <a
-                href={`tel:${ownerContact}`}
-                className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl transition-all border border-slate-700"
+              <button
+                type="button"
+                onClick={() => makePhoneCall(ownerContact, ownerName)}
+                className="p-2 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl transition-all border border-amber-400 cursor-pointer shadow-md"
                 title={`Call ${ownerName}`}
               >
                 <PhoneCall className="h-4 w-4" />
-              </a>
+              </button>
+            )}
+
+            {/* Delete Chat History Button */}
+            {messages.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (window.confirm('Permanently delete chat conversation history?')) {
+                    setMessages([]);
+                    try {
+                      localStorage.removeItem(storageKey);
+                    } catch {}
+                  }
+                }}
+                className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+                title="Delete Chat History"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
             )}
 
             {/* Close Button */}
@@ -239,28 +227,40 @@ export const BookingChatModal: React.FC<BookingChatModalProps> = ({
 
         {/* Chat Messages Body */}
         <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-50/50 dark:bg-zinc-900/40">
-          {messages.map((m) => {
-            const isMe = m.sender === currentRole;
-            return (
-              <div
-                key={m.id}
-                className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
-              >
-                <span className="text-[10px] text-slate-400 font-bold mb-0.5 px-1">
-                  {m.senderName} • {m.time}
-                </span>
+          {messages.length === 0 ? (
+            <div className="h-full min-h-[220px] flex flex-col items-center justify-center text-center p-6 text-slate-400 dark:text-zinc-500">
+              <MessageSquare className="h-10 w-10 text-slate-300 dark:text-zinc-700 mb-2 stroke-1" />
+              <p className="font-bold text-xs text-slate-700 dark:text-zinc-300">
+                Direct Chat with {currentRole === 'owner' ? rName : ownerName}
+              </p>
+              <p className="text-[11px] text-slate-400 dark:text-zinc-500 mt-1 max-w-xs">
+                Send a message to discuss availability, visits, inspection, or pricing directly.
+              </p>
+            </div>
+          ) : (
+            messages.map((m) => {
+              const isMe = m.sender === currentRole;
+              return (
                 <div
-                  className={`max-w-[85%] p-3 rounded-2xl text-xs font-medium leading-relaxed shadow-xs ${
-                    isMe
-                      ? 'bg-indigo-600 text-white rounded-tr-xs'
-                      : 'bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 border border-slate-200 dark:border-zinc-700 rounded-tl-xs'
-                  }`}
+                  key={m.id}
+                  className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
                 >
-                  {m.text}
+                  <span className="text-[10px] text-slate-400 font-bold mb-0.5 px-1">
+                    {m.senderName} • {m.time}
+                  </span>
+                  <div
+                    className={`max-w-[85%] p-3 rounded-2xl text-xs font-medium leading-relaxed shadow-xs ${
+                      isMe
+                        ? 'bg-indigo-600 text-white rounded-tr-xs'
+                        : 'bg-white dark:bg-zinc-800 text-slate-900 dark:text-zinc-100 border border-slate-200 dark:border-zinc-700 rounded-tl-xs'
+                    }`}
+                  >
+                    {m.text}
+                  </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
         </div>
 
         {/* Quick Replies Bar */}

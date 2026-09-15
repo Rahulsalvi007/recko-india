@@ -22,7 +22,7 @@ export const SportsTurfCard: React.FC<SportsTurfCardProps> = ({
 }) => {
   if (!turf) return null;
 
-  const imageUrl = turf.images?.[0] || 'https://images.unsplash.com/photo-1529900748604-07564a03e7a6?w=800&q=80';
+  const imageUrl = turf.images?.[0] || 'https://images.unsplash.com/photo-1517649763962-0c623066013b?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D';
 
   return (
     <div

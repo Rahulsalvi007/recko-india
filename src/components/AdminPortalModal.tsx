@@ -45,13 +45,21 @@ import {
   Home,
   UtensilsCrossed,
   BookOpen,
-  FileCheck
+  FileCheck,
+  Bot,
+  Send,
+  MessageSquare,
+  HelpCircle
 } from 'lucide-react';
 import { LandlordUser, Property, Vehicle, Hotel, Restaurant, Library, ClothingItem, SportsTurfItem, GeneralItem, RentalBooking, TenantUser, AbuseReport, JuniorAdmin, AppNotification } from '../types';
 import { auditAIFakeListing } from '../utils/aiLocationEngine';
+import { safeRoundCurrency, formatINR } from '../utils/financialCalculations';
 import { scanAllAssetsForDuplicateImages, composeOwnerDuplicateImageNotice, DuplicateImageIncident, DuplicateImageMatch } from '../utils/fakeImageAnalysisEngine';
+import { generateChatGPTResponse, ReckoLiveMetrics } from '../utils/chatGptAiEngine';
+import { queryUniversalAIEngine } from '../utils/universalAiEngine';
 import { saveDocument, deleteDocument, subscribeCollection } from '../lib/firebase';
 import { sendEmailOtpClient, verifyEmailOtpClient } from '../lib/brevoClient';
+import { getAdminPaymentConfig, saveAdminPaymentConfig, resetAdminPaymentConfig, AdminPaymentConfig } from '../utils/adminPaymentStore';
 
 interface AdminPortalModalProps {
   isOpen: boolean;
@@ -69,6 +77,10 @@ interface AdminPortalModalProps {
   generalItems?: GeneralItem[];
   onDeleteProperty: (id: string) => void;
   onDeleteVehicle: (id: string) => void;
+  onDeleteClothing?: (id: string) => void;
+  onDeleteSportsTurf?: (id: string) => void;
+  onDeleteGeneralItem?: (id: string) => void;
+  onDeleteBooking?: (id: string) => void;
   bookings?: RentalBooking[];
   onUpdateBookingStatus?: (id: string, newStatus: any) => void;
   tokenAmount?: number;
@@ -96,6 +108,10 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   generalItems = [],
   onDeleteProperty,
   onDeleteVehicle,
+  onDeleteClothing,
+  onDeleteSportsTurf,
+  onDeleteGeneralItem,
+  onDeleteBooking,
   bookings = [],
   onUpdateBookingStatus,
   tokenAmount = 99,
@@ -132,7 +148,8 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   });
   const [credentialsMsg, setCredentialsMsg] = useState('');
 
-  // Designated Super Admin Email OTP Login Verification State
+  // Designated Super Admin & Junior Admin Email OTP Login Verification State
+  const [loginPortalTab, setLoginPortalTab] = useState<'super' | 'junior'>('super');
   const [isLoginOtpRequired, setIsLoginOtpRequired] = useState(false);
   const [loginOtpSentCode, setLoginOtpSentCode] = useState('');
   const [loginOtpInput, setLoginOtpInput] = useState('');
@@ -146,6 +163,10 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   const [adminProfileRole, setAdminProfileRole] = useState(() => localStorage.getItem('renthub_admin_profile_role') || 'Super Admin & System Administrator');
   const [adminProfileSecurityPin, setAdminProfileSecurityPin] = useState(() => localStorage.getItem('renthub_admin_profile_pin') || '7038');
   const [adminProfileMsg, setAdminProfileMsg] = useState('');
+
+  // Admin Official Payment QR Code & Merchant Settings State
+  const [adminQrConfig, setAdminQrConfig] = useState<AdminPaymentConfig>(() => getAdminPaymentConfig());
+  const [qrSaveMsg, setQrSaveMsg] = useState<string>('');
 
   // Admin Email Verification & Password Reset Modal State
   const [isAdminVerifyModalOpen, setIsAdminVerifyModalOpen] = useState(false);
@@ -169,17 +190,39 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
       return;
     }
 
+    // 🔒 Admin Authorization Guard: Verify entered email is an authorized Super Admin or Junior Admin
+    const superAdminEmail = (adminProfileEmail || 'salvirahul7038@gmail.com').trim().toLowerCase();
+    const isSuperAdmin = (
+      inputEmail === superAdminEmail ||
+      inputEmail === 'salvirahul7038@gmail.com' ||
+      inputEmail === 'admin' ||
+      inputEmail === 'superadmin'
+    );
+
+    const matchedJunior = juniorAdmins.find(
+      (j) => (j.email || '').trim().toLowerCase() === inputEmail || (j.username || '').trim().toLowerCase() === inputEmail
+    );
+
+    if (!isSuperAdmin && !matchedJunior) {
+      setAdminVerifyError(`🚫 ACCESS DENIED: "${adminVerifyEmailInput}" is NOT a registered Admin Email address. Password Reset OTP can ONLY be sent to authorized Admin email accounts.`);
+      return;
+    }
+
+    // Target email is ALWAYS the specific admin's own registered email address
+    const targetEmail = isSuperAdmin ? superAdminEmail : matchedJunior!.email.trim().toLowerCase();
+    const recipientName = isSuperAdmin ? (adminProfileName || 'Super Admin') : matchedJunior!.name;
+
     setIsSendingAdminOtp(true);
     try {
       const res = await sendEmailOtpClient({
-        email: inputEmail,
-        userName: 'Super Admin',
+        email: targetEmail,
+        userName: recipientName,
         purpose: 'password_reset'
       });
 
       if (res.success) {
         setAdminVerifyStep('otp');
-        setAdminVerifyMsg(`✉️ Verification Code has been sent to ${inputEmail}! Please check your Email Inbox & Spam folder.`);
+        setAdminVerifyMsg(`✉️ Authorization OTP has been sent directly to ${recipientName}'s registered Email (${targetEmail})! Please check your Inbox & Spam folder.`);
       } else {
         setAdminVerifyError(res.message || 'Failed to dispatch OTP email. Please try again.');
       }
@@ -199,12 +242,19 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
       return;
     }
 
+    const superAdminEmail = (adminProfileEmail || 'salvirahul7038@gmail.com').trim().toLowerCase();
+    const inputEmail = adminVerifyEmailInput.trim().toLowerCase();
+    const matchedJunior = juniorAdmins.find(
+      (j) => (j.email || '').trim().toLowerCase() === inputEmail || (j.username || '').trim().toLowerCase() === inputEmail
+    );
+    const targetEmail = matchedJunior ? matchedJunior.email.toLowerCase() : superAdminEmail;
+
     setIsSendingAdminOtp(true);
     try {
-      const res = await verifyEmailOtpClient(adminVerifyEmailInput.trim().toLowerCase(), cleanOtp);
+      const res = await verifyEmailOtpClient(targetEmail, cleanOtp);
       if (res.success && res.verified) {
         setAdminVerifyStep('new_password');
-        setAdminVerifyMsg('✓ Email OTP Verified successfully! Now set your new Super Admin Password.');
+        setAdminVerifyMsg('✓ Email OTP Verified successfully! Now set your new Admin Password.');
       } else {
         setAdminVerifyError(res.message || 'Incorrect OTP code. Please check your email inbox.');
       }
@@ -224,27 +274,49 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
       return;
     }
 
-    setActiveAdminPass(cleanPass);
-    setNewAdminPassInput(cleanPass);
-    localStorage.setItem('renthub_admin_pass', cleanPass);
+    const superAdminEmail = (adminProfileEmail || 'salvirahul7038@gmail.com').trim().toLowerCase();
+    const inputEmail = adminVerifyEmailInput.trim().toLowerCase();
+    const isSuperAdmin = (
+      inputEmail === superAdminEmail ||
+      inputEmail === 'salvirahul7038@gmail.com' ||
+      inputEmail === 'admin' ||
+      inputEmail === 'superadmin'
+    );
 
-    try {
-      await saveDocument('system_config', 'admin_credentials', {
-        id: 'admin_credentials',
-        adminId: activeAdminId,
-        adminPass: cleanPass,
-        updatedAt: new Date().toISOString()
-      });
-    } catch (err) {
-      console.warn('Firebase admin credential update notice:', err);
+    if (isSuperAdmin) {
+      setActiveAdminPass(cleanPass);
+      setNewAdminPassInput(cleanPass);
+      localStorage.setItem('renthub_admin_pass', cleanPass);
+
+      try {
+        await saveDocument('system_config', 'admin_credentials', {
+          id: 'admin_credentials',
+          adminId: activeAdminId,
+          adminPass: cleanPass,
+          updatedAt: new Date().toISOString()
+        });
+      } catch (err) {
+        console.warn('Firebase admin credential update notice:', err);
+      }
+      setAdminVerifyMsg('🎉 Super Admin Password Updated & Verified successfully!');
+    } else {
+      setJuniorAdmins((prev) =>
+        prev.map((j) =>
+          (j.email || '').trim().toLowerCase() === inputEmail || (j.username || '').trim().toLowerCase() === inputEmail
+            ? { ...j, password: cleanPass }
+            : j
+        )
+      );
+      setAdminVerifyMsg('🎉 Junior Admin Password Updated successfully!');
     }
 
     setAdminVerifyStep('success');
-    setAdminVerifyMsg('🎉 Super Admin Password Updated & Verified successfully!');
     setTimeout(() => {
       setIsAdminVerifyModalOpen(false);
-      setAdminPassword(cleanPass);
-      setAdminId(activeAdminId);
+      if (isSuperAdmin) {
+        setAdminPassword(cleanPass);
+        setAdminId(activeAdminId);
+      }
       setLoginError('✅ Email Verified! Password updated. Click Login to enter.');
     }, 1800);
   };
@@ -328,42 +400,7 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { /* fallback */ }
     }
-    return [
-      {
-        id: 'jadmin-1',
-        name: 'Vikram Singh',
-        email: 'vikram.admin@renthub.in',
-        username: 'vikram',
-        password: 'jpass123',
-        role: 'Junior Admin',
-        permissions: {
-          canManageOwners: true,
-          canViewFeedbacks: true,
-          canManageListings: true,
-          canViewAnalytics: false,
-        },
-        createdBy: 'Super Admin',
-        createdAt: '2026-08-01',
-        status: 'Active'
-      },
-      {
-        id: 'jadmin-2',
-        name: 'Pooja Sharma',
-        email: 'pooja.admin@renthub.in',
-        username: 'pooja',
-        password: 'jpass456',
-        role: 'Junior Admin',
-        permissions: {
-          canManageOwners: true,
-          canViewFeedbacks: true,
-          canManageListings: false,
-          canViewAnalytics: false,
-        },
-        createdBy: 'Super Admin',
-        createdAt: '2026-08-03',
-        status: 'Active'
-      }
-    ];
+    return [];
   });
 
   useEffect(() => {
@@ -382,7 +419,7 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
   const [newJuniorCanAnalytics, setNewJuniorCanAnalytics] = useState(false);
   const [juniorFormMsg, setJuniorFormMsg] = useState('');
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'landlords' | 'bookingRequests' | 'properties' | 'vehicles' | 'clothing' | 'users' | 'fakeReports' | 'analytics' | 'juniorAdmins' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'landlords' | 'bookingRequests' | 'properties' | 'vehicles' | 'clothing' | 'users' | 'fakeReports' | 'analytics' | 'juniorAdmins' | 'settings' | 'aiAssistant' | 'profile'>('dashboard');
   const [landlordFilter, setLandlordFilter] = useState<'ALL' | 'Pending' | 'Approved' | 'Rejected'>('Pending');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -406,6 +443,82 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
 
   // User Contact Support & Feedbacks State
   const [userFeedbacks, setUserFeedbacks] = useState<any[]>([]);
+
+  // Admin AI Assistant Co-Pilot State
+  const [selectedAiModel, setSelectedAiModel] = useState<'gpt-4o' | 'finance-ai' | 'security-ai'>('gpt-4o');
+  const [aiChatMessages, setAiChatMessages] = useState<{ id: string; sender: 'admin' | 'ai'; text: string; timestamp: string }[]>([
+    {
+      id: 'welcome-1',
+      sender: 'ai',
+      text: `### 🤖 Recko SuperAdmin AI Co-Pilot (GPT-4o Engine)
+
+Namaste Admin! Main aapka **Personal AI Assistant** (ChatGPT-4o Powered) hoon.
+
+Aap mujhse Recko India website, live inventory counts, financial revenue reports (₹128.62 fee & 18% GST), fake listing audits, landlord verification, business strategies, marketing ideas, code, ya legal advice ke bare me **kuch bhi** pooch sakte hain!`,
+      timestamp: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+    }
+  ]);
+  const [aiInputQuery, setAiInputQuery] = useState('');
+  const [isAiThinking, setIsAiThinking] = useState(false);
+
+  const handleAskAdminAI = (queryText?: string) => {
+    const rawQuery = (queryText || aiInputQuery).trim();
+    if (!rawQuery) return;
+
+    const userMsgId = `usr-${Date.now()}`;
+    const timestampStr = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+
+    setAiChatMessages(prev => [
+      ...prev,
+      { id: userMsgId, sender: 'admin', text: rawQuery, timestamp: timestampStr }
+    ]);
+    if (!queryText) setAiInputQuery('');
+    setIsAiThinking(true);
+
+    setTimeout(() => {
+      // Live metrics calculation
+      const totalPropertiesCount = properties.length;
+      const totalVehiclesCount = vehicles.length;
+      const totalClothingCount = clothing.length;
+      const totalTurfsCount = sportsTurfs.length;
+      const totalHotelsCount = hotels.length + restaurants.length + libraries.length;
+      const totalGeneralCount = generalItems.length;
+      const totalAssets = totalPropertiesCount + totalVehiclesCount + totalClothingCount + totalTurfsCount + totalHotelsCount + totalGeneralCount;
+
+      const listingFeeTotal = totalAssets * 128.62;
+      const gstTotal = listingFeeTotal * (19.62 / 128.62);
+      const tokenTotal = bookings.reduce((sum, b) => sum + (b.tokenPaidAmount || tokenAmount), 0);
+      const grandTotalRevenue = listingFeeTotal + tokenTotal;
+
+      const metrics: ReckoLiveMetrics = {
+        propertiesCount: totalPropertiesCount,
+        vehiclesCount: totalVehiclesCount,
+        clothingCount: totalClothingCount,
+        turfsCount: totalTurfsCount,
+        hotelsCount: totalHotelsCount,
+        generalCount: totalGeneralCount,
+        totalAssets,
+        activeLandlords: landlords.length,
+        pendingLandlords: landlords.filter(l => l.status === 'Pending').length,
+        bookingsCount: bookings.length,
+        tokenAmount,
+        listingFeeTotal,
+        gstTotal,
+        tokenTotal,
+        grandTotalRevenue,
+        topCityNames: ['Jaipur', 'Udaipur', 'Jodhpur', 'Delhi', 'Mumbai', 'Bangalore']
+      };
+
+      const responseText = generateChatGPTResponse(rawQuery, metrics, selectedAiModel);
+      const aiMsgId = `ai-${Date.now()}`;
+
+      setAiChatMessages(prev => [
+        ...prev,
+        { id: aiMsgId, sender: 'ai', text: responseText, timestamp: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) }
+      ]);
+      setIsAiThinking(false);
+    }, 450);
+  };
 
   useEffect(() => {
     if (!isOpen) return;
@@ -917,10 +1030,53 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
                 <div className="h-16 w-16 bg-gradient-to-tr from-amber-400 via-yellow-400 to-amber-500 text-slate-950 border border-amber-300 rounded-3xl mx-auto flex items-center justify-center shadow-xl shadow-amber-500/20">
                   <Lock className="h-8 w-8 stroke-[2.5]" />
                 </div>
-                <h3 className="text-xl font-black text-white">Super Admin Access Gateway</h3>
+                <h3 className="text-xl font-black text-white">
+                  {loginPortalTab === 'super' ? 'Super Admin Control Center' : 'Junior Admin Staff Portal'}
+                </h3>
                 <p className="text-xs text-slate-400">
-                  Enter Admin ID/Username & Password. A 6-digit authorization OTP will be sent to the registered email address.
+                  {loginPortalTab === 'super'
+                    ? 'Enter Super Admin ID & Password. Real-time 6-Digit Email OTP required.'
+                    : 'Enter Junior Admin Staff ID & Password. Real-time 6-Digit Email OTP required.'}
                 </p>
+              </div>
+
+              {/* Role Selection Switcher Bar */}
+              <div className="flex bg-[#141418] p-1 rounded-2xl border border-amber-500/30">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginPortalTab('super');
+                    setAdminId('');
+                    setAdminPassword('');
+                    setLoginError('');
+                  }}
+                  className={`flex-1 py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+                    loginPortalTab === 'super'
+                      ? 'bg-amber-500 text-slate-950 shadow-md'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  <span>Super Admin</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLoginPortalTab('junior');
+                    setAdminId('');
+                    setAdminPassword('');
+                    setLoginError('');
+                  }}
+                  className={`flex-1 py-2 text-xs font-black rounded-xl transition-all flex items-center justify-center space-x-1.5 cursor-pointer ${
+                    loginPortalTab === 'junior'
+                      ? 'bg-amber-500 text-slate-950 shadow-md'
+                      : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  <UserCheck className="h-4 w-4" />
+                  <span>Junior Admin Staff</span>
+                </button>
               </div>
 
               {loginError && (
@@ -938,12 +1094,12 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
                       <div>
                         <h4 className="font-bold text-xs text-white">6-Digit Email Authorization Code Sent</h4>
                         <p className="text-[11px] text-amber-300 font-mono">
-                          Verification OTP sent to {pendingJuniorLogin ? pendingJuniorLogin.email : (adminProfileEmail || 'salvirahul7038@gmail.com')}
+                          OTP sent to: {pendingJuniorLogin ? pendingJuniorLogin.email : (adminProfileEmail || 'salvirahul7038@gmail.com')}
                         </p>
                       </div>
                     </div>
                     <p className="text-[11px] text-slate-300 pt-1">
-                      Please check your Email Inbox & Spam folder. Enter the 6-digit verification code below to authorize {pendingJuniorLogin ? `Junior Admin (${pendingJuniorLogin.name})` : 'Super Admin'} login.
+                      Please check your Email Inbox & Spam folder. Enter the 6-digit code below to authorize {pendingJuniorLogin ? `Junior Admin (${pendingJuniorLogin.name})` : 'Super Admin'} login.
                     </p>
                   </div>
 
@@ -955,7 +1111,7 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
 
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1">
-                      Enter 6-Digit Authorization OTP
+                      Enter 6-Digit Authorization OTP *
                     </label>
                     <input
                       type="text"
@@ -987,14 +1143,15 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
               ) : (
                 /* STEP 1: Enter Admin ID & Password */
                 <form onSubmit={handleAdminLogin} className="space-y-4">
+
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1">
-                      Admin Email or ID / Username
+                      {loginPortalTab === 'super' ? 'Super Admin Email / ID' : 'Junior Admin Username / Email *'}
                     </label>
                     <input
                       type="text"
                       required
-                      placeholder="Enter Admin Username or Email"
+                      placeholder={loginPortalTab === 'super' ? 'salvirahul7038@gmail.com' : 'e.g. vikram or vikram.admin@renthub.in'}
                       value={adminId}
                       onChange={(e) => setAdminId(e.target.value)}
                       className="w-full bg-[#141418] border border-amber-500/30 rounded-xl p-3 text-xs text-white font-mono focus:ring-2 focus:ring-amber-500 outline-none"
@@ -1003,12 +1160,12 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
 
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1">
-                      Super Admin Password
+                      {loginPortalTab === 'super' ? 'Super Admin Password *' : 'Junior Admin Staff Password *'}
                     </label>
                     <input
                       type="password"
                       required
-                      placeholder="Enter Master Password"
+                      placeholder={loginPortalTab === 'super' ? 'Enter Super Admin Password' : 'Enter Junior Admin Password'}
                       value={adminPassword}
                       onChange={(e) => setAdminPassword(e.target.value)}
                       className="w-full bg-[#141418] border border-amber-500/30 rounded-xl p-3 text-xs text-white font-mono focus:ring-2 focus:ring-amber-500 outline-none"
@@ -1019,7 +1176,7 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
                     type="submit"
                     className="w-full bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-yellow-300 text-slate-950 font-black py-3.5 rounded-xl text-xs transition-all shadow-lg shadow-amber-500/20 cursor-pointer border border-amber-300"
                   >
-                    Verify Credentials & Send OTP
+                    {isSendingAdminOtp ? 'Sending OTP to Registered Email...' : 'Verify Credentials & Send OTP'}
                   </button>
 
                   <div className="pt-2 flex flex-col gap-2">
@@ -1042,7 +1199,7 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
               )}
 
               <div className="bg-[#141418] p-3.5 rounded-2xl border border-amber-500/20 text-[11px] text-slate-400 text-center">
-                🔒 <span className="font-semibold text-amber-300">Gold Protected Gateway</span> • Multi-factor Email OTP active.
+                🔒 <span className="font-semibold text-amber-300">Gold Protected Gateway</span> • Multi-factor Email OTP active for Super Admin & Junior Admins.
               </div>
             </div>
           </div>
@@ -1162,6 +1319,18 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
                     <span>Analytics</span>
                   </button>
                 )}
+
+                <button
+                  onClick={() => setActiveTab('aiAssistant')}
+                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border transition-all cursor-pointer ${
+                    activeTab === 'aiAssistant'
+                      ? 'bg-purple-500/20 text-purple-300 border-purple-400 font-black shadow-sm shadow-purple-500/30 animate-pulse'
+                      : 'border-purple-500/30 text-purple-300 hover:text-white hover:bg-purple-950/40'
+                  }`}
+                >
+                  <Bot className="h-4 w-4 text-purple-400" />
+                  <span>🤖 Admin AI Co-Pilot</span>
+                </button>
 
                 {loggedInRole === 'Super Admin' && (
                   <>
@@ -1804,6 +1973,21 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
                                   <span>Approve & Publish Live</span>
                                 </button>
                               )}
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (window.confirm(`⚠️ Delete Clothing Listing:\n\nAre you sure you want to permanently delete outfit "${c.title}"?`)) {
+                                    if (onDeleteClothing) onDeleteClothing(c.id);
+                                    deleteDocument('clothing', c.id);
+                                    alert(`🗑️ Outfit "${c.title}" has been deleted.`);
+                                  }
+                                }}
+                                className="bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800 px-3 py-1.5 rounded-xl font-bold text-xs transition-all cursor-pointer flex items-center space-x-1"
+                              >
+                                <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                                <span>Delete Outfit</span>
+                              </button>
                             </div>
                           </div>
                         </div>
@@ -2171,7 +2355,18 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
                               type="button"
                               onClick={() => {
                                 setAbuseReports(prev => prev.filter(r => r.id !== rep.id));
-                                onDeleteProperty(rep.itemId);
+                                const t = String(rep.type || '').toLowerCase();
+                                if (t.includes('veh') || t.includes('car') || t.includes('bike')) {
+                                  onDeleteVehicle(rep.itemId);
+                                } else if ((t.includes('cloth') || t.includes('dress') || t.includes('sherwani')) && onDeleteClothing) {
+                                  onDeleteClothing(rep.itemId);
+                                } else if (t.includes('turf') && onDeleteSportsTurf) {
+                                  onDeleteSportsTurf(rep.itemId);
+                                } else if (t.includes('item') && onDeleteGeneralItem) {
+                                  onDeleteGeneralItem(rep.itemId);
+                                } else {
+                                  onDeleteProperty(rep.itemId);
+                                }
                                 alert(`Listing "${rep.itemTitle}" removed and banned for policy violations.`);
                               }}
                               className="bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 font-bold px-3 py-1.5 rounded-xl cursor-pointer"
@@ -2256,36 +2451,296 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
                 </div>
               )}
 
-              {/* TAB 6: ANALYTICS */}
-              {activeTab === 'analytics' && (
-                <div className="space-y-4">
-                  <h3 className="font-black text-sm text-white">Platform Analytics & City Rentals</h3>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl text-xs space-y-3">
-                      <h4 className="font-extrabold text-slate-200">Popular Rental Cities</h4>
-                      <div className="space-y-2">
-                        <div className="flex justify-between"><span>Jaipur (Rajasthan)</span><span className="font-bold text-emerald-400">42% Demand</span></div>
-                        <div className="w-full bg-slate-800 h-2 rounded-full"><div className="bg-emerald-500 h-2 rounded-full w-[42%]"></div></div>
-                        
-                        <div className="flex justify-between"><span>Udaipur (Rajasthan)</span><span className="font-bold text-zinc-300">28% Demand</span></div>
-                        <div className="w-full bg-slate-800 h-2 rounded-full"><div className="bg-zinc-800 text-white h-2 rounded-full w-[28%]"></div></div>
-                        
-                        <div className="flex justify-between"><span>Bangalore (Karnataka)</span><span className="font-bold text-zinc-400">18% Demand</span></div>
-                        <div className="w-full bg-slate-800 h-2 rounded-full"><div className="bg-zinc-400 h-2 rounded-full w-[18%]"></div></div>
+              {/* TAB 6: DYNAMIC PLATFORM ANALYTICS & FINANCIAL INTELLIGENCE */}
+              {activeTab === 'analytics' && (() => {
+                const totalPropertiesRent = properties.reduce((acc, p) => acc + (p.rentPerMonth || 0), 0);
+                const totalVehiclesRent = vehicles.reduce((acc, v) => acc + (v.rentPerDay || 0) * 30, 0);
+                const totalClothingRent = clothing.reduce((acc, c) => acc + (c.rentPerDay || 0) * 10, 0);
+                const totalTurfRent = sportsTurfs.reduce((acc, t) => acc + (t.rentPerHour || 0) * 100, 0);
+                const totalHotelRent = hotels.reduce((acc, h) => acc + (h.rooms?.[0]?.pricePerNight || 1800) * 15, 0);
+                const totalPlatformGmv = totalPropertiesRent + totalVehiclesRent + totalClothingRent + totalTurfRent + totalHotelRent;
+                
+                const listingFeeCollected = safeRoundCurrency((properties.length + vehicles.length + clothing.length + sportsTurfs.length + generalItems.length + hotels.length + restaurants.length + libraries.length) * 128.62);
+                const tokenEarningsCollected = safeRoundCurrency(bookings.reduce((acc, b) => acc + (b.tokenPaidAmount || tokenAmount), 0));
+                const totalAdminPlatformRevenue = safeRoundCurrency(listingFeeCollected + tokenEarningsCollected);
+                const totalGstCollected = safeRoundCurrency(listingFeeCollected * (19.62 / 128.62));
+
+                // City analytics map
+                const cityCounts: Record<string, number> = {};
+                [...properties, ...vehicles, ...clothing, ...sportsTurfs, ...hotels, ...restaurants, ...libraries, ...generalItems].forEach((item) => {
+                  const cName = item.city || 'Jaipur';
+                  cityCounts[cName] = (cityCounts[cName] || 0) + 1;
+                });
+                const totalAssetCount = Object.values(cityCounts).reduce((a, b) => a + b, 0) || 1;
+                const topCities = Object.entries(cityCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+                return (
+                  <div className="space-y-5 animate-in fade-in duration-150">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-[#141418] border border-amber-500/30 p-4 rounded-2xl">
+                      <div>
+                        <h3 className="font-black text-sm text-white flex items-center space-x-2">
+                          <PieChart className="h-4 w-4 text-amber-400" />
+                          <span>Platform Revenue & Financial Intelligence</span>
+                        </h3>
+                        <p className="text-xs text-slate-400 font-medium mt-0.5">
+                          Real-time calculation of platform GMV, GST Tax Invoices, Escrow Token Earnings, and Inventory Distribution.
+                        </p>
+                      </div>
+                      <span className="text-xs font-mono font-bold bg-emerald-950 text-emerald-300 border border-emerald-800 px-3 py-1 rounded-xl">
+                        Live System Sync ✓
+                      </span>
+                    </div>
+
+                    {/* Financial KPI Cards */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 font-mono text-xs">
+                      <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-1">
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Total Platform GMV</span>
+                        <span className="text-2xl font-black text-amber-400">₹{(totalPlatformGmv / 100000).toFixed(2)} Lakhs</span>
+                        <p className="text-[10px] text-slate-500 font-sans">Combined active rental asset valuation</p>
+                      </div>
+
+                      <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-1">
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Admin Platform Revenue</span>
+                        <span className="text-2xl font-black text-emerald-400">{formatINR(totalAdminPlatformRevenue)}</span>
+                        <p className="text-[10px] text-slate-500 font-sans">Listing Fees + Escrow Tokens</p>
+                      </div>
+
+                      <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-1">
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">18% GST Collected</span>
+                        <span className="text-2xl font-black text-indigo-400">{formatINR(totalGstCollected)}</span>
+                        <p className="text-[10px] text-slate-500 font-sans">CGST (9%) + SGST (9%) compliant</p>
+                      </div>
+
+                      <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 space-y-1">
+                        <span className="text-slate-400 block text-[10px] uppercase font-bold">Active Listings & Hosts</span>
+                        <span className="text-2xl font-black text-white">{totalAssetCount} Assets • {landlords.length} Hosts</span>
+                        <p className="text-[10px] text-slate-500 font-sans">Across 8 categories nationwide</p>
                       </div>
                     </div>
 
-                    <div className="bg-slate-950 border border-slate-800 p-4 rounded-2xl text-xs space-y-3">
-                      <h4 className="font-extrabold text-slate-200">Monthly Booking Trends</h4>
-                      <div className="flex items-baseline justify-between pt-4">
-                        <div className="text-center"><span className="text-slate-400 block">May</span><span className="font-black text-sm">₹1.2L</span></div>
-                        <div className="text-center"><span className="text-slate-400 block">Jun</span><span className="font-black text-sm">₹2.8L</span></div>
-                        <div className="text-center"><span className="text-slate-400 block">Jul</span><span className="font-black text-sm">₹4.5L</span></div>
-                        <div className="text-center"><span className="text-zinc-300 block font-bold">Aug (Est)</span><span className="font-black text-emerald-400 text-base">₹6.2L</span></div>
+                    {/* Breakdown & City Demand Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Popular Rental Cities */}
+                      <div className="bg-slate-950 border border-slate-800 p-5 rounded-2xl text-xs space-y-4">
+                        <h4 className="font-extrabold text-white text-sm flex items-center justify-between border-b border-slate-800 pb-2">
+                          <span>📍 Popular Rental Cities & Demand Share</span>
+                          <span className="text-amber-400 font-mono">{topCities.length} Cities Active</span>
+                        </h4>
+
+                        <div className="space-y-3 font-sans">
+                          {topCities.map(([cityName, count]) => {
+                            const pct = Math.round((count / totalAssetCount) * 100);
+                            return (
+                              <div key={cityName} className="space-y-1">
+                                <div className="flex justify-between font-bold text-slate-300">
+                                  <span>📍 {cityName}</span>
+                                  <span className="font-mono text-amber-400">{pct}% ({count} listings)</span>
+                                </div>
+                                <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
+                                  <div className="bg-gradient-to-r from-amber-500 to-yellow-400 h-2 rounded-full" style={{ width: `${pct}%` }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Category Inventory Breakdown */}
+                      <div className="bg-slate-950 border border-slate-800 p-5 rounded-2xl text-xs space-y-4">
+                        <h4 className="font-extrabold text-white text-sm flex items-center justify-between border-b border-slate-800 pb-2">
+                          <span>📦 Asset Category Distribution</span>
+                          <span className="text-emerald-400 font-mono">8 Categories</span>
+                        </h4>
+
+                        <div className="space-y-3 font-sans">
+                          {[
+                            { name: 'Residential & Commercial Properties', count: properties.length, color: 'bg-emerald-500' },
+                            { name: 'Vehicles (Cars, Bikes, Scooters)', count: vehicles.length, color: 'bg-blue-500' },
+                            { name: 'Clothing & Fashion Outfits', count: clothing.length, color: 'bg-amber-500' },
+                            { name: 'Sports Turfs & Arenas', count: sportsTurfs.length, color: 'bg-green-500' },
+                            { name: 'Appliances & General Electronics', count: generalItems.length, color: 'bg-purple-500' },
+                            { name: 'Hotels & Dining Spaces', count: hotels.length + restaurants.length + libraries.length, color: 'bg-rose-500' }
+                          ].map((cat) => {
+                            const pct = Math.round((cat.count / totalAssetCount) * 100) || 0;
+                            return (
+                              <div key={cat.name} className="space-y-1">
+                                <div className="flex justify-between font-bold text-slate-300">
+                                  <span>{cat.name}</span>
+                                  <span className="font-mono text-white">{cat.count} items ({pct}%)</span>
+                                </div>
+                                <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
+                                  <div className={`${cat.color} h-2 rounded-full`} style={{ width: `${Math.max(5, pct)}%` }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   </div>
+                );
+              })()}
+
+              {/* TAB: RECKO SUPERADMIN AI CO-PILOT ASSISTANT */}
+              {activeTab === 'aiAssistant' && (
+                <div className="space-y-4 animate-in fade-in duration-150">
+                  {/* AI Assistant Glow Header */}
+                  <div className="bg-gradient-to-r from-purple-950/80 via-slate-900 to-indigo-950/90 p-4 sm:p-5 rounded-3xl border border-purple-500/40 shadow-2xl space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-purple-500/20 pb-3">
+                      <div className="flex items-center space-x-3">
+                        <div className="h-10 w-10 rounded-2xl bg-purple-500/20 text-purple-300 border border-purple-400/50 flex items-center justify-center font-black shadow-lg shadow-purple-900/40 shrink-0">
+                          <Bot className="h-6 w-6" />
+                        </div>
+                        <div>
+                          <div className="flex items-center space-x-2">
+                            <h3 className="font-extrabold text-base text-white">Recko Admin AI Assistant</h3>
+                            <select
+                              value={selectedAiModel}
+                              onChange={(e) => setSelectedAiModel(e.target.value as any)}
+                              className="bg-purple-950/80 border border-purple-400/50 text-purple-200 text-xs font-mono font-bold px-2 py-0.5 rounded-lg outline-none cursor-pointer"
+                            >
+                              <option value="gpt-4o">🤖 Recko AI (GPT-4o Engine)</option>
+                              <option value="finance-ai">💰 Financial & GST Auditor AI</option>
+                              <option value="security-ai">🛡️ AI Fraud & Security Auditor</option>
+                            </select>
+                          </div>
+                          <p className="text-xs text-purple-200/80 font-medium mt-0.5">
+                            ChatGPT-powered Generative Assistant. Answers any question about Recko India, live platform statistics, marketing, coding, GST compliance, or business strategy.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center space-x-2 shrink-0 self-start sm:self-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAiChatMessages([
+                              {
+                                id: 'welcome-1',
+                                sender: 'ai',
+                                text: `### 🤖 Recko SuperAdmin AI Co-Pilot (GPT-4o Engine)\n\nNamaste Admin! Main aapka **Personal AI Assistant** (ChatGPT-4o Powered) hoon.\n\nAap mujhse Recko India website, live inventory counts, financial revenue reports (₹128.62 fee & 18% GST), fake listing audits, landlord verification, business strategies, marketing ideas, code, ya legal advice ke bare me **kuch bhi** pooch sakte hain!`,
+                                timestamp: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+                              }
+                            ]);
+                          }}
+                          className="bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold px-3 py-1.5 rounded-xl border border-slate-700 cursor-pointer transition-all"
+                        >
+                          <span>Clear Chat</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Quick Suggestion Chips (ChatGPT Style) */}
+                    <div className="space-y-1.5">
+                      <span className="text-[11px] font-mono text-purple-300 font-bold block uppercase tracking-wider">
+                        💡 ChatGPT Suggested Conversation Starters:
+                      </span>
+                      <div className="flex flex-wrap gap-1.5 text-xs font-medium">
+                        {[
+                          '🌐 Recko India website kis purpose ke liye hai?',
+                          '💰 Listing fee, platform fee aur GST breakdown samjhao',
+                          '📊 Current platform live inventory aur total revenue report',
+                          '🛡️ Fake listings aur fake owners detection kaise work karta hai?',
+                          '👥 Landlord verification aur approval process kya hai?',
+                          '📍 GPS proximity radar aur city coordinates kaise kaam karte hain?',
+                          '🚀 Recko ko Tier-2 cities me expand karne ki marketing strategy'
+                        ].map((promptText) => (
+                          <button
+                            key={promptText}
+                            type="button"
+                            onClick={() => handleAskAdminAI(promptText)}
+                            className="bg-purple-950/60 hover:bg-purple-900/80 text-purple-200 border border-purple-500/40 px-3 py-1.5 rounded-xl transition-all cursor-pointer hover:border-purple-400 text-left font-sans"
+                          >
+                            {promptText}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* AI Chat Log Box */}
+                  <div className="bg-[#0c0c10] border border-purple-500/30 rounded-3xl p-4 sm:p-5 space-y-4 max-h-[500px] overflow-y-auto no-scrollbar shadow-inner">
+                    {aiChatMessages.map((msg) => (
+                      <div
+                        key={msg.id}
+                        className={`flex items-start space-x-3 ${msg.sender === 'admin' ? 'flex-row-reverse space-x-reverse' : ''}`}
+                      >
+                        <div className={`h-8 w-8 rounded-xl shrink-0 flex items-center justify-center font-black text-xs border ${
+                          msg.sender === 'ai'
+                            ? 'bg-purple-500/20 text-purple-300 border-purple-400/50'
+                            : 'bg-amber-400/20 text-amber-300 border-amber-400/50'
+                        }`}>
+                          {msg.sender === 'ai' ? <Bot className="h-4 w-4" /> : 'ADM'}
+                        </div>
+
+                        <div className={`max-w-[85%] sm:max-w-[75%] rounded-2xl p-4 text-xs space-y-1.5 shadow-md ${
+                          msg.sender === 'ai'
+                            ? 'bg-[#15151f] border border-purple-500/30 text-slate-100 font-sans'
+                            : 'bg-gradient-to-r from-amber-500 to-yellow-500 text-slate-950 font-bold font-sans'
+                        }`}>
+                          <div className="flex items-center justify-between border-b border-white/10 pb-1 text-[10px] opacity-75 font-mono">
+                            <span>{msg.sender === 'ai' ? 'Recko SuperAdmin AI Co-Pilot' : 'Super Admin'}</span>
+                            <span>{msg.timestamp}</span>
+                          </div>
+
+                          <div className="whitespace-pre-wrap leading-relaxed">
+                            {msg.text}
+                          </div>
+
+                          {msg.sender === 'ai' && (
+                            <div className="pt-2 flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(msg.text);
+                                  alert('📋 AI Response copied to clipboard!');
+                                }}
+                                className="text-[10px] text-purple-300 hover:text-purple-100 font-mono font-bold flex items-center space-x-1 cursor-pointer"
+                              >
+                                <Copy className="h-3 w-3" />
+                                <span>Copy Answer</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    {isAiThinking && (
+                      <div className="flex items-center space-x-3 text-xs text-purple-300 font-mono animate-pulse">
+                        <div className="h-7 w-7 rounded-xl bg-purple-500/20 border border-purple-400 flex items-center justify-center">
+                          <Bot className="h-4 w-4 text-purple-300 animate-spin" />
+                        </div>
+                        <span>Thinking & analyzing live website data...</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* AI Input Form Bar */}
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleAskAdminAI();
+                    }}
+                    className="flex items-center space-x-2 bg-[#121218] p-2 rounded-2xl border border-purple-500/40 shadow-xl"
+                  >
+                    <input
+                      type="text"
+                      value={aiInputQuery}
+                      onChange={(e) => setAiInputQuery(e.target.value)}
+                      placeholder="Ask Admin AI assistant about website features, fees, total revenue, fake owner audit..."
+                      className="flex-1 bg-transparent px-3 py-2 text-xs text-white placeholder-slate-400 font-medium outline-none"
+                    />
+
+                    <button
+                      type="submit"
+                      disabled={!aiInputQuery.trim() || isAiThinking}
+                      className="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl flex items-center space-x-1.5 cursor-pointer shadow-lg shadow-purple-900/50 transition-all shrink-0"
+                    >
+                      <Send className="h-3.5 w-3.5" />
+                      <span>Ask AI</span>
+                    </button>
+                  </form>
                 </div>
               )}
 
@@ -2656,6 +3111,124 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
                           </button>
                         ))}
                       </div>
+                    </div>
+                  </div>
+
+                  {/* Admin Payment QR Code & Merchant Config Card */}
+                  <div className="bg-slate-950 border border-amber-500/30 p-5 rounded-2xl space-y-4 shadow-md">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2 text-amber-400">
+                        <Zap className="h-5 w-5" />
+                        <h3 className="font-extrabold text-sm text-white">Official Admin Payment QR Code & Merchant Settings</h3>
+                      </div>
+                      <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">
+                        Live Payment Escrow
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-400">
+                      Upload or replace the Official Admin Payment QR Code image displayed to Owners during listing upload & Tenants during booking.
+                    </p>
+
+                    {qrSaveMsg && (
+                      <div className="bg-emerald-950/80 border border-emerald-800 text-emerald-300 p-3 rounded-xl text-xs font-bold">
+                        {qrSaveMsg}
+                      </div>
+                    )}
+
+                    {/* Current QR Code Display & Quick Controls */}
+                    <div className="flex flex-col sm:flex-row items-center gap-4 bg-slate-900 p-4 rounded-xl border border-slate-800">
+                      <div className="bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm shrink-0">
+                        <img
+                          src={adminQrConfig.qrUrl}
+                          alt="Admin Payment QR Code"
+                          className="w-36 h-36 object-contain rounded-lg"
+                        />
+                      </div>
+
+                      <div className="space-y-2 flex-1 text-xs text-slate-300 w-full">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-400 mb-0.5">Merchant Name</label>
+                          <input
+                            type="text"
+                            value={adminQrConfig.merchantName}
+                            onChange={(e) => setAdminQrConfig({ ...adminQrConfig, merchantName: e.target.value })}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-amber-300 font-bold"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-400 mb-0.5">Merchant UPI ID</label>
+                          <input
+                            type="text"
+                            value={adminQrConfig.upiId}
+                            onChange={(e) => setAdminQrConfig({ ...adminQrConfig, upiId: e.target.value })}
+                            className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-emerald-400 font-mono font-bold"
+                          />
+                        </div>
+
+                        {/* File Upload OR Image URL Input */}
+                        <div className="pt-1 space-y-2">
+                          <label className="block text-[11px] font-bold text-slate-300">Upload New QR Code Image</label>
+                          <div className="flex items-center space-x-2">
+                            <label className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-[11px] font-black px-3 py-1.5 rounded-lg cursor-pointer transition-all shadow-xs shrink-0 flex items-center space-x-1">
+                              <ImageIcon className="h-3.5 w-3.5" />
+                              <span>Upload Image File</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) {
+                                    const reader = new FileReader();
+                                    reader.onload = (evt) => {
+                                      const result = evt.target?.result as string;
+                                      if (result) {
+                                        const updated = saveAdminPaymentConfig({ qrUrl: result, upiId: adminQrConfig.upiId, merchantName: adminQrConfig.merchantName });
+                                        setAdminQrConfig(updated);
+                                        setQrSaveMsg('✅ Admin Payment QR Image uploaded successfully!');
+                                        setTimeout(() => setQrSaveMsg(''), 4000);
+                                      }
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }
+                                }}
+                              />
+                            </label>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const updated = resetAdminPaymentConfig();
+                                setAdminQrConfig(updated);
+                                setQrSaveMsg('🔴 Admin Payment QR reset to default merchant QR.');
+                                setTimeout(() => setQrSaveMsg(''), 4000);
+                              }}
+                              className="bg-rose-950 hover:bg-rose-900 text-rose-300 text-[11px] font-bold px-3 py-1.5 rounded-lg border border-rose-800 cursor-pointer transition-all shrink-0 flex items-center space-x-1"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                              <span>Delete / Reset QR</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = saveAdminPaymentConfig(adminQrConfig);
+                          setAdminQrConfig(updated);
+                          setQrSaveMsg('🎉 Payment & QR Settings saved live to system & database!');
+                          setTimeout(() => setQrSaveMsg(''), 4000);
+                        }}
+                        className="w-full bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black text-xs py-2.5 rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center space-x-1.5"
+                      >
+                        <CheckCircle2 className="h-4 w-4 stroke-[2.5]" />
+                        <span>Save Official Admin Payment Settings</span>
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -3138,14 +3711,20 @@ export const AdminPortalModal: React.FC<AdminPortalModalProps> = ({
               {adminVerifyStep === 'email' && (
                 <form onSubmit={handleSendAdminEmailOTP} className="space-y-4 text-xs">
                   <p className="text-slate-300">
-                    Enter your registered Admin Email / Username to receive a 6-digit email verification OTP code.
+                    Enter your authorized Admin Registered Email address to receive a 6-digit email verification OTP code.
                   </p>
+                  
+                  <div className="bg-amber-950/40 border border-amber-500/30 p-2.5 rounded-xl text-[11px] text-amber-300 flex items-center space-x-2">
+                    <ShieldCheck className="h-4 w-4 shrink-0 text-amber-400" />
+                    <span>🔒 Security Policy: OTP is dispatched ONLY to that specific Admin's own registered email address.</span>
+                  </div>
+
                   <div>
-                    <label className="block text-slate-300 font-bold mb-1">Admin Registered Email / ID</label>
+                    <label className="block text-slate-300 font-bold mb-1">Admin Registered Email Address / Username *</label>
                     <input
                       type="text"
                       required
-                      placeholder="e.g. admin@1234 or admin@renthub.in"
+                      placeholder="Enter Super Admin or Junior Admin registered Email / Username"
                       value={adminVerifyEmailInput}
                       onChange={(e) => setAdminVerifyEmailInput(e.target.value)}
                       className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white font-mono outline-none focus:ring-2 focus:ring-amber-500"

@@ -14,6 +14,7 @@ import {
   Printer
 } from 'lucide-react';
 import { RentalBooking } from '../types';
+import { calculateInspectionSettlement, formatINR } from '../utils/financialCalculations';
 
 interface VehicleInspectionModalProps {
   booking: RentalBooking | null;
@@ -42,15 +43,27 @@ export const VehicleInspectionModal: React.FC<VehicleInspectionModalProps> = ({
   // State for Return Inspection
   const [odometerReturn, setOdometerReturn] = useState<number>(booking.returnOdometerKm || 25780);
   const [fuelReturn, setFuelReturn] = useState<number>(booking.returnFuelLevelPercent || 70);
+  const [lateHours, setLateHours] = useState<number>(0);
 
-  // Calculations for Return
-  const includedKm = booking.includedKm || 300;
-  const extraKmChargeRate = booking.extraKmCharge || 10;
+  // Calculations for Return via Standardized Financial Utility
+  const includedKm = (booking as any).includedKm || 300;
+  const extraKmChargeRate = (booking as any).extraKmCharge || 10;
   const usedKm = Math.max(0, odometerReturn - odometerPickup);
-  const extraKm = Math.max(0, usedKm - includedKm);
-  const extraKmFee = extraKm * extraKmChargeRate;
-  const initialDeposit = 2000;
-  const finalSettlementDeposit = Math.max(0, initialDeposit - extraKmFee);
+  const initialDeposit = (booking as any)?.securityDeposit || (booking as any)?.deposit || 2000;
+
+  const settlement = calculateInspectionSettlement({
+    initialDeposit,
+    usedKm,
+    includedKm,
+    extraKmRate: extraKmChargeRate,
+    lateHours,
+    lateFeePerHourRate: 250
+  });
+
+  const extraKm = settlement.extraKm;
+  const extraKmFee = settlement.extraKmFee;
+  const lateFeeTotal = settlement.lateFeeTotal;
+  const finalSettlementDeposit = settlement.refundedDeposit;
 
   const handleSave = () => {
     let newStatus = booking.status;
@@ -291,23 +304,23 @@ export const VehicleInspectionModal: React.FC<VehicleInspectionModalProps> = ({
                 <div className="space-y-1 text-xs">
                   <div className="flex justify-between">
                     <span>Initial Deposit Held in Escrow:</span>
-                    <strong className="font-mono">₹{initialDeposit}</strong>
+                    <strong className="font-mono">{formatINR(initialDeposit)}</strong>
                   </div>
                   {extraKmFee > 0 && (
                     <div className="flex justify-between text-rose-700">
                       <span>Extra KM Charges Deduction ({extraKm} KM):</span>
-                      <strong className="font-mono">-₹{extraKmFee}</strong>
+                      <strong className="font-mono">-{formatINR(extraKmFee)}</strong>
                     </div>
                   )}
                   {lateFeeTotal > 0 && (
                     <div className="flex justify-between text-rose-700">
                       <span>Late Return Fee Deduction ({lateHours} hrs × ₹250):</span>
-                      <strong className="font-mono">-₹{lateFeeTotal}</strong>
+                      <strong className="font-mono">-{formatINR(lateFeeTotal)}</strong>
                     </div>
                   )}
                   <div className="flex justify-between border-t border-emerald-300 pt-1 text-sm font-black text-emerald-900">
                     <span>Final Deposit Amount Refunded to Renter:</span>
-                    <span className="font-mono text-emerald-700 text-base">₹{finalSettlementDeposit}</span>
+                    <span className="font-mono text-emerald-700 text-base">{formatINR(finalSettlementDeposit)}</span>
                   </div>
                 </div>
               </div>

@@ -182,23 +182,28 @@ export const UserAuthModal: React.FC<UserAuthModalProps> = ({
     setIsRegistering(true);
 
     if (!regName.trim()) {
-      setRegError('Please enter your Full Name.');
+      setRegError('⚠️ Required Field Missing: Please enter your Full Name.');
       setIsRegistering(false);
       return;
     }
     if (!regEmail.trim() || !regEmail.includes('@')) {
-      setRegError('Please enter a valid Gmail / Email address.');
+      setRegError('⚠️ Required Field Missing: Please enter a valid Gmail / Email address.');
       setIsRegistering(false);
       return;
     }
-    if (!regPhone.trim()) {
-      setRegError('Please enter your 10-digit Phone Number.');
+    if (!regPhone.trim() || !/^[6-9]\d{9}$/.test(regPhone.trim())) {
+      setRegError('⚠️ Invalid Phone Number: Please enter a valid 10-digit Indian Mobile Number (starting with 6, 7, 8, or 9).');
+      setIsRegistering(false);
+      return;
+    }
+    if (!regPassword.trim() || regPassword.trim().length < 4) {
+      setRegError('⚠️ Required Field Missing: Please enter a Password (min 4 characters).');
       setIsRegistering(false);
       return;
     }
 
     const cleanEmail = regEmail.trim().toLowerCase();
-    const cleanPass = regPassword.trim() || 'password123';
+    const cleanPass = regPassword.trim();
 
     const users = getStoredUsers();
     const existing = users.find((u) => u.email.toLowerCase() === cleanEmail);

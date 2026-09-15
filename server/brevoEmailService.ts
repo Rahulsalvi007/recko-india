@@ -422,7 +422,7 @@ export async function sendBrevoEmailOtp(params: {
   });
 
   console.log(`\n======================================================`);
-  console.log(`🔑 [SERVER OTP GENERATED] Email: ${cleanEmail} | OTP Code: ${otp}`);
+  console.log(`🔑 [SERVER OTP DISPATCHED] Email: ${cleanEmail} | OTP Status: Generated & Sent via Brevo`);
   console.log(`======================================================\n`);
 
   const { apiKey: brevoApiKey, senderEmail, senderName } = getBrevoConfig();

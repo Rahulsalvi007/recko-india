@@ -165,6 +165,35 @@ export const LandlordAuthModal: React.FC<LandlordAuthModalProps> = ({
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!regName.trim()) {
+      alert('⚠️ Required Field Missing:\n\nPlease enter your Full Name.');
+      return;
+    }
+    if (!regPhone.trim() || !/^[6-9]\d{9}$/.test(regPhone.trim())) {
+      alert('⚠️ Invalid Phone Number:\n\nPlease enter a valid 10-digit Indian Mobile Number (starting with 6, 7, 8, or 9).');
+      return;
+    }
+    if (!regEmail.trim() || !regEmail.includes('@')) {
+      alert('⚠️ Required Field Missing:\n\nPlease enter a valid Email address.');
+      return;
+    }
+    if (!regPassword.trim() || regPassword.trim().length < 4) {
+      alert('⚠️ Required Field Missing:\n\nPlease enter a Password (minimum 4 characters).');
+      return;
+    }
+    if (!regCity.trim()) {
+      alert('⚠️ Required Field Missing:\n\nPlease enter your City / Location.');
+      return;
+    }
+    if (!regAddress.trim()) {
+      alert('⚠️ Required Field Missing:\n\nPlease enter your Full Address.');
+      return;
+    }
+    if (!regIdProofNumber.trim()) {
+      alert('⚠️ Required Field Missing:\n\nPlease enter your Government ID Number (Aadhaar / PAN / License).');
+      return;
+    }
+
     const requestedId = regUserId.trim();
     if (requestedId) {
       const exists = landlords.some((l) => l.id.toLowerCase() === requestedId.toLowerCase());
@@ -179,7 +208,7 @@ export const LandlordAuthModal: React.FC<LandlordAuthModalProps> = ({
 
     if (regEmail.trim()) {
       try {
-        await registerWithEmailPassword(regEmail.trim().toLowerCase(), regPassword.trim() || 'owner123');
+        await registerWithEmailPassword(regEmail.trim().toLowerCase(), regPassword.trim());
       } catch (fbErr: any) {
         console.log('Firebase landlord registration note:', fbErr);
       }
@@ -187,18 +216,18 @@ export const LandlordAuthModal: React.FC<LandlordAuthModalProps> = ({
 
     const newUser: LandlordUser = {
       id: finalId,
-      name: regName,
-      email: regEmail,
-      phone: regPhone,
-      businessName: regBusiness || `${regName} Rentals`,
-      state: regState,
-      district: regDistrict,
-      city: regCity,
-      address: regAddress,
-      idProofNumber: regIdProofNumber,
+      name: regName.trim(),
+      email: regEmail.trim(),
+      phone: regPhone.trim(),
+      businessName: regBusiness.trim() || `${regName.trim()} Rentals`,
+      state: regState.trim(),
+      district: regDistrict.trim(),
+      city: regCity.trim(),
+      address: regAddress.trim(),
+      idProofNumber: regIdProofNumber.trim(),
       documentType: regDocType,
       documentPhotoUrl: regDocPhoto || undefined,
-      password: regPassword || 'owner123',
+      password: regPassword.trim(),
       status: 'Pending',
       requestedAt: new Date().toISOString().split('T')[0]
     };

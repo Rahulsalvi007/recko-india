@@ -21,6 +21,7 @@ import {
   Ban,
   Copy,
   User,
+  Users,
   Hash,
   Sparkles,
   Lock,
@@ -32,11 +33,20 @@ import {
   ExternalLink,
   Info,
   MapPin,
-  RefreshCw
+  RefreshCw,
+  CreditCard,
+  Shirt,
+  Trophy,
+  Zap,
+  Package,
+  Layers,
+  Smartphone
 } from 'lucide-react';
-import { LandlordUser, Property, Vehicle, RentalBooking, AppNotification } from '../types';
+import { LandlordUser, Property, Vehicle, RentalBooking, AppNotification, ClothingItem, SportsTurfItem, GeneralItem, Hotel, Restaurant, Library } from '../types';
 import { saveDocument } from '../lib/firebase';
 import { EmailVerificationModal } from './EmailVerificationModal';
+import { makePhoneCall } from '../utils/phoneCall';
+import { formatINR, safeRoundCurrency } from '../utils/financialCalculations';
 
 interface LandlordDashboardModalProps {
   isOpen: boolean;
@@ -45,6 +55,12 @@ interface LandlordDashboardModalProps {
   onLogout: () => void;
   properties: Property[];
   vehicles: Vehicle[];
+  clothingItems?: ClothingItem[];
+  sportsTurfs?: SportsTurfItem[];
+  generalItems?: GeneralItem[];
+  hotels?: Hotel[];
+  restaurants?: Restaurant[];
+  libraries?: Library[];
   bookings: RentalBooking[];
   onOpenAddListing: () => void;
   onUpdatePropertyRent?: (id: string, newRent: number) => void;
@@ -56,9 +72,12 @@ interface LandlordDashboardModalProps {
   onDeleteVehicle?: (id: string) => void;
   onDeleteClothing?: (id: string) => void;
   onDeleteSportsTurf?: (id: string) => void;
+  onDeleteGeneralItem?: (id: string) => void;
+  onDeleteBooking?: (id: string) => void;
   onTrackVehicleGPS?: (booking: RentalBooking) => void;
   onOpenBookingChat?: (booking: RentalBooking) => void;
   onDeleteLandlordAccount?: (landlordId: string) => void;
+  onUpdateLandlord?: (updatedLandlord: LandlordUser, oldData?: { name?: string; phone?: string; email?: string; upiId?: string }) => void;
 }
 
 export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
@@ -68,6 +87,12 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
   onLogout,
   properties,
   vehicles,
+  clothingItems = [],
+  sportsTurfs = [],
+  generalItems = [],
+  hotels = [],
+  restaurants = [],
+  libraries = [],
   bookings,
   onOpenAddListing,
   onUpdatePropertyRent,
@@ -79,11 +104,14 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
   onDeleteVehicle,
   onDeleteClothing,
   onDeleteSportsTurf,
+  onDeleteGeneralItem,
+  onDeleteBooking,
   onTrackVehicleGPS,
   onOpenBookingChat,
-  onDeleteLandlordAccount
+  onDeleteLandlordAccount,
+  onUpdateLandlord
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'properties' | 'vehicles' | 'bookings' | 'reviews' | 'notifications' | 'security'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'all-assets' | 'properties' | 'vehicles' | 'clothing' | 'turfs' | 'general' | 'bookings' | 'tenants' | 'reviews' | 'notifications' | 'security'>('overview');
   const [editingRentId, setEditingRentId] = useState<string | null>(null);
   const [tempRentInput, setTempRentInput] = useState<number>(0);
   const [copiedId, setCopiedId] = useState(false);
@@ -95,6 +123,8 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
   const [ownerEditPhone, setOwnerEditPhone] = useState(landlord?.phone || '');
   const [ownerEditAddress, setOwnerEditAddress] = useState(landlord?.address || '');
   const [ownerEditCity, setOwnerEditCity] = useState(landlord?.city || '');
+  const [ownerEditUpiId, setOwnerEditUpiId] = useState(landlord?.upiId || '');
+  const [ownerEditUpiQrUrl, setOwnerEditUpiQrUrl] = useState(landlord?.upiQrUrl || '');
 
   useEffect(() => {
     if (landlord) {
@@ -102,6 +132,8 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
       setOwnerEditPhone(landlord.phone || '');
       setOwnerEditAddress(landlord.address || '');
       setOwnerEditCity(landlord.city || '');
+      setOwnerEditUpiId(landlord.upiId || '');
+      setOwnerEditUpiQrUrl(landlord.upiQrUrl || '');
     }
   }, [landlord]);
 
@@ -110,23 +142,37 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
     if (!landlord) return;
     setPassUpdateMsg('');
 
+    const oldData = {
+      name: landlord.name,
+      phone: landlord.phone,
+      email: landlord.email,
+      upiId: landlord.upiId
+    };
+
     const updatedLandlord: LandlordUser = {
       ...landlord,
       name: ownerEditName.trim() || landlord.name,
       phone: ownerEditPhone.trim() || landlord.phone,
       address: ownerEditAddress.trim() || landlord.address,
       city: ownerEditCity.trim() || landlord.city,
+      upiId: ownerEditUpiId.trim(),
+      upiQrUrl: ownerEditUpiQrUrl.trim(),
       ...(newLandlordPassword.trim() ? { password: newLandlordPassword.trim() } : {})
     };
 
-    localStorage.setItem('renthub_landlord_user', JSON.stringify(updatedLandlord));
+    // Save to active landlord session in localStorage
+    localStorage.setItem('renthub_logged_landlord', JSON.stringify(updatedLandlord));
     try {
       await saveDocument('landlords', landlord.id, updatedLandlord);
     } catch (err) {
       console.warn('Firebase landlord update error:', err);
     }
 
-    setPassUpdateMsg('✅ Owner personal details & password updated successfully!');
+    if (onUpdateLandlord) {
+      onUpdateLandlord(updatedLandlord, oldData);
+    }
+
+    setPassUpdateMsg('✅ Owner profile & payment settings updated & synchronized across all your listings and bookings!');
     setNewLandlordPassword('');
     setTimeout(() => setPassUpdateMsg(''), 4000);
   };
@@ -146,13 +192,37 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
 
   if (!isOpen || !landlord) return null;
 
-  // Filter properties and vehicles belonging to this landlord
+  // Filter properties, vehicles, clothing, turfs, general items belonging to this landlord
   const myProperties = properties.filter(
-    (p) => p.ownerName.toLowerCase().includes(landlord.name.toLowerCase()) || p.ownerId === landlord.id
+    (p) => (p.ownerName && p.ownerName.toLowerCase().includes(landlord.name.toLowerCase())) || p.ownerId === landlord.id || (landlord.phone && p.ownerContact === landlord.phone)
   );
 
   const myVehicles = vehicles.filter(
-    (v) => (v.ownerName && v.ownerName.toLowerCase().includes(landlord.name.toLowerCase())) || v.ownerId === landlord.id
+    (v) => (v.ownerName && v.ownerName.toLowerCase().includes(landlord.name.toLowerCase())) || v.ownerId === landlord.id || (landlord.phone && v.ownerContact === landlord.phone)
+  );
+
+  const myClothing = (clothingItems || []).filter(
+    (c) => (c.ownerName && c.ownerName.toLowerCase().includes(landlord.name.toLowerCase())) || c.ownerId === landlord.id || (landlord.phone && c.ownerContact === landlord.phone)
+  );
+
+  const mySportsTurfs = (sportsTurfs || []).filter(
+    (t) => (t.ownerName && t.ownerName.toLowerCase().includes(landlord.name.toLowerCase())) || t.ownerId === landlord.id || (landlord.phone && t.ownerContact === landlord.phone)
+  );
+
+  const myGeneralItems = (generalItems || []).filter(
+    (g) => (g.ownerName && g.ownerName.toLowerCase().includes(landlord.name.toLowerCase())) || g.ownerId === landlord.id || (landlord.phone && g.ownerContact === landlord.phone)
+  );
+
+  const myHotels = (hotels || []).filter(
+    (h) => (h.ownerName && h.ownerName.toLowerCase().includes(landlord.name.toLowerCase())) || h.ownerId === landlord.id || (landlord.phone && h.ownerContact === landlord.phone)
+  );
+
+  const myRestaurants = (restaurants || []).filter(
+    (r) => (r.ownerName && r.ownerName.toLowerCase().includes(landlord.name.toLowerCase())) || r.ownerId === landlord.id || (landlord.phone && r.ownerContact === landlord.phone)
+  );
+
+  const myLibraries = (libraries || []).filter(
+    (l) => (l.ownerName && l.ownerName.toLowerCase().includes(landlord.name.toLowerCase())) || l.ownerId === landlord.id || (landlord.phone && l.ownerContact === landlord.phone)
   );
 
   const activePropertiesCount = myProperties.filter((p) => p.status !== 'Pending Approval' && p.isAvailable !== false).length;
@@ -161,37 +231,143 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
   // Filter bookings for this landlord's items or directed to this landlord
   const myPropertyIds = myProperties.map((p) => p.id);
   const myVehicleIds = myVehicles.map((v) => v.id);
+  const myClothingIds = myClothing.map((c) => c.id);
+  const myTurfIds = mySportsTurfs.map((t) => t.id);
+  const myGeneralIds = myGeneralItems.map((g) => g.id);
+  const myHotelIds = myHotels.map((h) => h.id);
+  const myRestaurantIds = myRestaurants.map((r) => r.id);
+  const myLibraryIds = myLibraries.map((l) => l.id);
 
   const myBookings = bookings.filter((b) => {
     if (b.ownerId && (b.ownerId === landlord.id || b.ownerId.toLowerCase() === landlord.name.toLowerCase())) return true;
     if (b.ownerName && b.ownerName.toLowerCase().includes(landlord.name.toLowerCase())) return true;
-    if (myPropertyIds.includes(b.itemId) || myVehicleIds.includes(b.itemId)) return true;
+    if (myPropertyIds.includes(b.itemId) || myVehicleIds.includes(b.itemId) || myClothingIds.includes(b.itemId) || myTurfIds.includes(b.itemId) || myGeneralIds.includes(b.itemId) || myHotelIds.includes(b.itemId) || myRestaurantIds.includes(b.itemId) || myLibraryIds.includes(b.itemId)) return true;
     return false;
   });
 
-  const pendingBookings = myBookings.filter(
-    (b) => b.status === 'Pending Verification' || b.status === 'Pending' || b.status === 'Owner Reviewing' || b.status === 'Pending Requests'
-  );
   const acceptedBookings = myBookings.filter((b) => b.status === 'Accepted' || b.status === 'Approved' || b.status === 'Active');
-  const rejectedBookings = myBookings.filter((b) => b.status === 'Rejected' || b.status === 'Cancelled');
+  const rejectedBookings = myBookings.filter((b) => b.status === 'Rejected' || b.status === 'Cancelled' || b.status === 'Declined');
+  const pendingBookings = myBookings.filter((b) => !acceptedBookings.some((a) => a.id === b.id) && !rejectedBookings.some((r) => r.id === b.id));
 
   const totalMonthlyEarnings = myProperties.reduce((sum, p) => sum + p.rentPerMonth, 0);
 
+  // Unified List of ALL Owner Assets
+  const allMyAssets = [
+    ...myProperties.map((p) => ({
+      id: p.id,
+      title: p.title,
+      category: 'Property',
+      categoryTag: p.type || 'Property',
+      image: p.images?.[0] || 'https://images.unsplash.com/photo-1570129477492-45c003edd2be?w=400&q=80',
+      location: p.location,
+      city: p.city,
+      priceDisplay: `${formatINR(p.rentPerMonth || 0)}/mo`,
+      depositDisplay: p.deposit ? `Deposit: ${formatINR(p.deposit)}` : undefined,
+      assetType: 'property' as const,
+      rawItem: p
+    })),
+    ...myVehicles.map((v) => ({
+      id: v.id,
+      title: v.title,
+      category: 'Vehicle',
+      categoryTag: v.vehicleType || 'Vehicle',
+      image: v.images?.[0] || 'https://images.unsplash.com/photo-1549399542-7e3f8b79c341?w=400&q=80',
+      location: v.location,
+      city: v.city,
+      priceDisplay: `${formatINR(v.rentPerDay || 0)}/day`,
+      depositDisplay: v.deposit ? `Deposit: ${formatINR(v.deposit)}` : undefined,
+      assetType: 'vehicle' as const,
+      rawItem: v
+    })),
+    ...myClothing.map((c) => ({
+      id: c.id,
+      title: c.title,
+      category: 'Clothing Outfit',
+      categoryTag: c.attireType || 'Outfit',
+      image: c.images?.[0] || 'https://images.unsplash.com/photo-1593030761757-71fae45fa0e7?w=400&q=80',
+      location: c.location,
+      city: c.city,
+      priceDisplay: `${formatINR(c.rentPricePerDay || c.rate1Day || 0)}/day`,
+      depositDisplay: c.deposit ? `Deposit: ${formatINR(c.deposit)}` : undefined,
+      assetType: 'clothing' as const,
+      rawItem: c
+    })),
+    ...mySportsTurfs.map((t) => ({
+      id: t.id,
+      title: t.title,
+      category: 'Sports Turf',
+      categoryTag: t.turfType || 'Ground',
+      image: t.images?.[0] || 'https://images.unsplash.com/photo-1517649763962-0c623066013b?q=80&w=870&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
+      location: t.location,
+      city: t.city,
+      priceDisplay: `${formatINR(t.rentPerHour || 0)}/hr`,
+      depositDisplay: undefined,
+      assetType: 'turf' as const,
+      rawItem: t
+    })),
+    ...myGeneralItems.map((g) => ({
+      id: g.id,
+      title: g.title,
+      category: 'Appliance & Gadget',
+      categoryTag: g.category || 'General',
+      image: g.images?.[0] || 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?w=400&q=80',
+      location: g.location,
+      city: g.city,
+      priceDisplay: `${formatINR(g.rentPerDay || 0)}/day`,
+      depositDisplay: g.deposit ? `Deposit: ${formatINR(g.deposit)}` : undefined,
+      assetType: 'general' as const,
+      rawItem: g
+    })),
+    ...myLibraries.map((l) => ({
+      id: l.id,
+      title: l.title,
+      category: 'Library Study Space',
+      categoryTag: 'Library',
+      image: l.images?.[0] || 'https://images.unsplash.com/photo-1521587760476-6c12a4b040da?w=400&q=80',
+      location: l.location,
+      city: l.city,
+      priceDisplay: `₹${l.dailyPassPrice?.toLocaleString('en-IN')}/day Pass`,
+      depositDisplay: undefined,
+      assetType: 'library' as const,
+      rawItem: l
+    })),
+    ...myRestaurants.map((r) => ({
+      id: r.id,
+      title: r.title,
+      category: 'Dining & Restaurant',
+      categoryTag: 'Restaurant',
+      image: r.images?.[0] || 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=400&q=80',
+      location: r.location,
+      city: r.city,
+      priceDisplay: `₹${r.averageCostForTwo?.toLocaleString('en-IN')} for two`,
+      depositDisplay: undefined,
+      assetType: 'restaurant' as const,
+      rawItem: r
+    })),
+    ...myHotels.map((h) => ({
+      id: h.id,
+      title: h.title,
+      category: 'Hotel & Stay',
+      categoryTag: 'Hotel',
+      image: h.images?.[0] || 'https://images.unsplash.com/photo-1566073771259-6a8506099945?w=400&q=80',
+      location: h.location,
+      city: h.city,
+      priceDisplay: `₹${h.rooms?.[0]?.pricePerNight?.toLocaleString('en-IN') || 1500}/night`,
+      depositDisplay: undefined,
+      assetType: 'hotel' as const,
+      rawItem: h
+    }))
+  ];
+
   // Filter bookings according to active status tab and search query
   const filteredBookings = myBookings.filter((b) => {
-    if (bookingFilterStatus === 'Pending') {
-      if (b.status !== 'Pending Verification' && b.status !== 'Pending' && b.status !== 'Owner Reviewing' && b.status !== 'Pending Requests') {
-        return false;
-      }
-    } else if (bookingFilterStatus === 'Accepted') {
-      if (b.status !== 'Accepted' && b.status !== 'Approved' && b.status !== 'Active') {
-        return false;
-      }
-    } else if (bookingFilterStatus === 'Rejected') {
-      if (b.status !== 'Rejected' && b.status !== 'Cancelled') {
-        return false;
-      }
-    }
+    const isApproved = b.status === 'Accepted' || b.status === 'Approved' || b.status === 'Active';
+    const isRejected = b.status === 'Rejected' || b.status === 'Cancelled' || b.status === 'Declined';
+    const isPending = !isApproved && !isRejected;
+
+    if (bookingFilterStatus === 'Pending' && !isPending) return false;
+    if (bookingFilterStatus === 'Accepted' && !isApproved) return false;
+    if (bookingFilterStatus === 'Rejected' && !isRejected) return false;
 
     if (bookingSearchQuery.trim()) {
       const q = bookingSearchQuery.toLowerCase();
@@ -394,6 +570,16 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
           </button>
 
           <button
+            onClick={() => setActiveTab('all-assets')}
+            className={`pb-2.5 px-2 flex items-center space-x-1.5 border-b-2 transition-all cursor-pointer ${
+              activeTab === 'all-assets' ? 'border-amber-500 text-amber-950 font-black bg-amber-50/50 rounded-t-lg' : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Package className="h-3.5 w-3.5 text-amber-500" />
+            <span>📦 All Assets ({allMyAssets.length})</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('properties')}
             className={`pb-2.5 px-2 flex items-center space-x-1.5 border-b-2 transition-all cursor-pointer ${
               activeTab === 'properties' ? 'border-zinc-800 text-zinc-900 font-black' : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -414,6 +600,16 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
           </button>
 
           <button
+            onClick={() => setActiveTab('clothing')}
+            className={`pb-2.5 px-2 flex items-center space-x-1.5 border-b-2 transition-all cursor-pointer ${
+              activeTab === 'clothing' ? 'border-zinc-800 text-zinc-900 font-black' : 'border-transparent text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            <Shirt className="h-3.5 w-3.5 text-amber-500" />
+            <span>Clothing & Outfits ({myClothing.length})</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab('bookings')}
             className={`pb-2.5 px-2 flex items-center space-x-1.5 border-b-2 transition-all cursor-pointer ${
               activeTab === 'bookings' ? 'border-zinc-800 text-zinc-900 font-black' : 'border-transparent text-slate-500 hover:text-slate-900'
@@ -426,6 +622,16 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
                 {pendingBookings.length}
               </span>
             )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('tenants')}
+            className={`pb-2.5 px-2 flex items-center space-x-1.5 border-b-2 transition-all cursor-pointer ${
+              activeTab === 'tenants' ? 'border-indigo-600 text-indigo-950 font-black bg-indigo-50/50 rounded-t-lg' : 'border-transparent text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Users className="h-3.5 w-3.5 text-indigo-600" />
+            <span>Active Tenants & Rentees ({myBookings.length})</span>
           </button>
 
           <button
@@ -596,6 +802,109 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
                   </button>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* TAB 1.5: ALL OWNER ASSETS */}
+          {activeTab === 'all-assets' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-black text-sm sm:text-base text-slate-900">
+                    📦 All Owner Rental Assets ({allMyAssets.length})
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Unified portfolio view of all your properties, vehicles, clothing outfits, turfs & appliances.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onOpenAddListing}
+                  className="bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center space-x-1.5 shadow-sm"
+                >
+                  <Plus className="h-4 w-4 stroke-[3]" />
+                  <span>+ Add New Asset</span>
+                </button>
+              </div>
+
+              {allMyAssets.length === 0 ? (
+                <div className="text-center py-12 bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200 text-xs text-slate-500 space-y-2">
+                  <Package className="h-8 w-8 text-amber-500 mx-auto" />
+                  <p className="font-bold text-slate-700">No rental assets listed under your owner account yet.</p>
+                  <button
+                    type="button"
+                    onClick={onOpenAddListing}
+                    className="mt-2 text-xs font-black text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-4 py-2 rounded-xl cursor-pointer"
+                  >
+                    + Add First Rental Asset
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {allMyAssets.map((asset) => (
+                    <div
+                      key={asset.id}
+                      className="bg-white/95 backdrop-blur-md border border-slate-200 hover:border-amber-400 p-4 rounded-2xl flex flex-col justify-between space-y-3 text-xs shadow-xs transition-all"
+                    >
+                      <div className="flex space-x-3">
+                        <img
+                          src={asset.image}
+                          alt={asset.title}
+                          className="h-20 w-20 rounded-xl object-cover shrink-0 border border-slate-200"
+                        />
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400 text-[10px] font-mono">#{asset.id}</span>
+                            <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase border ${
+                              asset.assetType === 'property'
+                                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                : asset.assetType === 'vehicle'
+                                ? 'bg-indigo-100 text-indigo-900 border-indigo-300'
+                                : asset.assetType === 'clothing'
+                                ? 'bg-rose-100 text-rose-900 border-rose-300'
+                                : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                            }`}>
+                              {asset.category}
+                            </span>
+                          </div>
+                          <h4 className="font-extrabold text-slate-900 text-sm truncate">{asset.title}</h4>
+                          <p className="text-slate-500 text-[11px] font-medium">{asset.location}, {asset.city}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-bold">Rental Rate</span>
+                          <span className="font-black text-slate-950 text-sm">{asset.priceDisplay}</span>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (asset.assetType === 'property' && onDeleteProperty) {
+                                if (window.confirm(`Delete property "${asset.title}"?`)) onDeleteProperty(asset.id);
+                              } else if (asset.assetType === 'vehicle' && onDeleteVehicle) {
+                                if (window.confirm(`Delete vehicle "${asset.title}"?`)) onDeleteVehicle(asset.id);
+                              } else if (asset.assetType === 'clothing' && onDeleteClothing) {
+                                if (window.confirm(`Delete outfit "${asset.title}"?`)) onDeleteClothing(asset.id);
+                              } else if (asset.assetType === 'sportsturf' && onDeleteSportsTurf) {
+                                if (window.confirm(`Delete sports turf "${asset.title}"?`)) onDeleteSportsTurf(asset.id);
+                              } else if (asset.assetType === 'general' && onDeleteGeneralItem) {
+                                if (window.confirm(`Delete listing "${asset.title}"?`)) onDeleteGeneralItem(asset.id);
+                              }
+                            }}
+                            className="text-[11px] font-bold bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 px-3 py-1.5 rounded-xl cursor-pointer flex items-center space-x-1"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -832,6 +1141,98 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
             </div>
           )}
 
+          {/* TAB 3: CLOTHING & WEDDING OUTFITS */}
+          {activeTab === 'clothing' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-black text-sm sm:text-base text-slate-900">
+                    Your Listed Clothing & Wedding Outfits ({myClothing.length})
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Manage your rental outfits, sherwanis, lehengas, suits, and designer wear.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={onOpenAddListing}
+                  className="bg-amber-400 hover:bg-amber-500 text-slate-950 font-black text-xs px-3.5 py-2 rounded-xl transition-all cursor-pointer flex items-center space-x-1.5 shadow-sm"
+                >
+                  <Plus className="h-4 w-4 stroke-[3]" />
+                  <span>+ Add New Outfit</span>
+                </button>
+              </div>
+
+              {myClothing.length === 0 ? (
+                <div className="text-center py-12 bg-white/80 backdrop-blur-md rounded-2xl border border-slate-200 text-xs text-slate-500 space-y-2">
+                  <Shirt className="h-8 w-8 text-amber-400 mx-auto" />
+                  <p className="font-bold text-slate-700">No clothing items or wedding outfits listed under your account yet.</p>
+                  <button
+                    type="button"
+                    onClick={onOpenAddListing}
+                    className="mt-2 text-xs font-black text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-300 px-4 py-2 rounded-xl cursor-pointer"
+                  >
+                    + Upload First Outfit for Rent
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {myClothing.map((c) => (
+                    <div
+                      key={c.id}
+                      className="bg-white/95 backdrop-blur-md border border-slate-200 hover:border-amber-400 p-4 rounded-2xl flex flex-col justify-between space-y-3 text-xs shadow-xs transition-all"
+                    >
+                      <div className="flex space-x-3">
+                        <img
+                          src={c.images?.[0] || 'https://images.unsplash.com/photo-1593030761757-71fae45fa0e7?w=400&q=80'}
+                          alt={c.title}
+                          className="h-24 w-24 rounded-xl object-cover shrink-0 border border-slate-200"
+                        />
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-slate-400 text-[10px] font-mono">#{c.id}</span>
+                            <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                              {c.attireType || c.category || 'Outfit'}
+                            </span>
+                          </div>
+                          <h4 className="font-extrabold text-slate-900 text-sm truncate">{c.title}</h4>
+                          <p className="text-slate-500 text-[11px] font-medium">
+                            Brand: <strong>{c.brand || 'Designer'}</strong> • Size: <strong>{c.size || 'Free Size'}</strong>
+                          </p>
+                          <p className="text-slate-500 text-[11px]">{c.location}, {c.city}</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                        <div>
+                          <span className="text-[10px] text-slate-400 block font-bold">1 Day Rent</span>
+                          <span className="font-black text-amber-700 text-sm">₹{c.rentPricePerDay?.toLocaleString('en-IN') || c.rate1Day}/day</span>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          {onDeleteClothing && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to delete outfit listing "${c.title}"?`)) {
+                                  onDeleteClothing(c.id);
+                                }
+                              }}
+                              className="text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100 px-3 py-1.5 rounded-xl cursor-pointer flex items-center space-x-1"
+                            >
+                              <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                              <span>Delete</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* TAB 4: BOOKINGS MANAGEMENT & TENANT APPROVAL / REJECTION */}
           {activeTab === 'bookings' && (
             <div className="space-y-4">
@@ -898,13 +1299,9 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
               ) : (
                 <div className="grid grid-cols-1 gap-4">
                   {filteredBookings.map((b) => {
-                    const isPending =
-                      b.status === 'Pending Verification' ||
-                      b.status === 'Pending' ||
-                      b.status === 'Owner Reviewing' ||
-                      b.status === 'Pending Requests';
                     const isApproved = b.status === 'Accepted' || b.status === 'Approved' || b.status === 'Active';
-                    const isRejected = b.status === 'Rejected' || b.status === 'Cancelled';
+                    const isRejected = b.status === 'Rejected' || b.status === 'Cancelled' || b.status === 'Declined';
+                    const isPending = !isApproved && !isRejected;
 
                     return (
                       <div
@@ -1025,6 +1422,33 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
                               <span className="text-slate-500 truncate block mt-0.5">📍 From: {b.currentAddress}</span>
                             )}
 
+                            {/* Token Payment & UTR Verification Card */}
+                            <div className="mt-2 bg-amber-500/10 border border-amber-400/50 p-2.5 rounded-xl text-xs space-y-1">
+                              <div className="flex items-center justify-between">
+                                <span className="font-extrabold text-amber-950 flex items-center space-x-1">
+                                  <CreditCard className="h-3.5 w-3.5 text-amber-600" />
+                                  <span>Token Amount: <strong>₹{b.tokenPaidAmount || 99}</strong></span>
+                                </span>
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${isApproved ? 'bg-emerald-200 text-emerald-950' : 'bg-amber-200 text-amber-950'}`}>
+                                  {isApproved ? 'Payment Verified ✓' : '⏳ Pending Payment Verification'}
+                                </span>
+                              </div>
+                              <div className="font-mono text-[11px] text-slate-800 flex items-center space-x-2">
+                                <span>UTR Ref ID: <strong className="text-slate-950 bg-amber-200/80 px-1.5 py-0.5 rounded border border-amber-300">{b.utrNumber || b.transactionId || 'Pending'}</strong></span>
+                                {b.ownerUpiId && <span className="text-[10px] text-slate-500 truncate">(UPI: {b.ownerUpiId})</span>}
+                              </div>
+                            </div>
+
+                            {/* Automatic Owner Mobile SMS Status */}
+                            {b.ownerSmsAlertSent && (
+                              <div className="mt-2 flex items-center space-x-1.5 text-[10px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-300 px-2.5 py-1 rounded-xl">
+                                <Smartphone className="h-3 w-3 text-emerald-600 shrink-0" />
+                                <span className="truncate">
+                                  Owner SMS Alert: Sent to your phone {b.ownerSmsDeliveredTo || landlord?.phone || ''} ({b.ownerSmsTimestamp || 'Recent'}) ✓
+                                </span>
+                              </div>
+                            )}
+
                             {/* Rejection Note if already rejected */}
                             {isRejected && b.rejectionReason && (
                               <div className="mt-2 bg-rose-50 border border-rose-200 p-2 rounded-xl text-rose-800 text-[11px]">
@@ -1050,23 +1474,37 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
                               </button>
                             )}
 
-                            <a
-                              href={`tel:${b.userPhone || '+919876543210'}`}
-                              className="bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs px-3 py-2 rounded-xl flex items-center space-x-1 transition-all"
+                            {b.userPhone && (
+                              <a
+                                href={`https://wa.me/91${b.userPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Namaste ${b.userName || 'Tenant'}, Recko-India par aapki booking request #${b.id} ke sandarbh me baat karni hai.`)}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs px-3 py-2 rounded-xl flex items-center space-x-1 transition-all cursor-pointer shadow-xs"
+                                title="WhatsApp Tenant"
+                              >
+                                <MessageSquare className="h-3.5 w-3.5" />
+                                <span>WhatsApp Tenant</span>
+                              </a>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => makePhoneCall(b.userPhone || '+919876543210', b.userName || 'Tenant')}
+                              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs px-3 py-2 rounded-xl flex items-center space-x-1 transition-all cursor-pointer shadow-xs"
                             >
-                              <Phone className="h-3.5 w-3.5 text-slate-600" />
+                              <Phone className="h-3.5 w-3.5 text-slate-950" />
                               <span>Call Tenant</span>
-                            </a>
+                            </button>
                           </div>
 
                           {/* Action Buttons: APPROVE / REJECT */}
                           <div className="flex items-center space-x-2 w-full sm:w-auto justify-end">
-                            {isPending && onUpdateBookingStatus && (
+                            {isPending && (
                               <>
                                 <button
                                   type="button"
                                   onClick={() => handleApproveBooking(b)}
-                                  className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-4 py-2.5 rounded-xl flex items-center justify-center space-x-1.5 cursor-pointer transition-all shadow-md hover:scale-105"
+                                  className="flex-1 sm:flex-none bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs px-4 py-2.5 rounded-xl flex items-center justify-center space-x-1.5 cursor-pointer transition-all shadow-md hover:scale-105 border border-emerald-500"
                                 >
                                   <Check className="h-4 w-4 stroke-[3]" />
                                   <span>Approve & Accept Request</span>
@@ -1075,7 +1513,7 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => setRejectingBooking(b)}
-                                  className="flex-1 sm:flex-none bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-3.5 py-2.5 rounded-xl flex items-center justify-center space-x-1 cursor-pointer transition-all shadow-sm"
+                                  className="flex-1 sm:flex-none bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs px-3.5 py-2.5 rounded-xl flex items-center justify-center space-x-1 cursor-pointer transition-all shadow-sm border border-rose-500 hover:scale-105"
                                 >
                                   <Ban className="h-3.5 w-3.5" />
                                   <span>Reject Request</span>
@@ -1084,16 +1522,49 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
                             )}
 
                             {isApproved && (
-                              <div className="inline-flex items-center space-x-1.5 text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl text-xs font-black border border-emerald-200">
-                                <CheckCircle2 className="h-4 w-4" />
-                                <span>Booking Active & Confirmed</span>
+                              <div className="flex items-center space-x-2">
+                                <div className="inline-flex items-center space-x-1.5 text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl text-xs font-black border border-emerald-200">
+                                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                                  <span>Approved & Confirmed ✓</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setRejectingBooking(b)}
+                                  className="text-[11px] font-bold text-rose-700 hover:text-rose-900 underline cursor-pointer px-1.5 py-1 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200"
+                                >
+                                  Change to Reject
+                                </button>
                               </div>
                             )}
 
                             {isRejected && (
-                              <div className="inline-flex items-center space-x-1.5 text-rose-700 bg-rose-50 px-3 py-1.5 rounded-xl text-xs font-bold border border-rose-200">
-                                <Ban className="h-4 w-4" />
-                                <span>Booking Declined (Token Refunded)</span>
+                              <div className="flex items-center space-x-2">
+                                <div className="inline-flex items-center space-x-1.5 text-rose-700 bg-rose-50 px-3 py-1.5 rounded-xl text-xs font-bold border border-rose-200">
+                                  <Ban className="h-4 w-4 text-rose-600" />
+                                  <span>Declined (Token Refunded)</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApproveBooking(b)}
+                                  className="text-[11px] font-bold text-emerald-700 hover:text-emerald-900 underline cursor-pointer px-1.5 py-1 bg-emerald-50 hover:bg-emerald-100 rounded-lg border border-emerald-200"
+                                >
+                                  Re-Approve
+                                </button>
+                                {onDeleteBooking && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (window.confirm(`Permanently remove booking request #${b.id} for "${b.itemTitle}" from records?`)) {
+                                        onDeleteBooking(b.id);
+                                      }
+                                    }}
+                                    className="text-[11px] font-bold text-rose-700 hover:text-rose-900 cursor-pointer px-2 py-1 bg-rose-50 hover:bg-rose-100 rounded-lg border border-rose-200 flex items-center space-x-1"
+                                    title="Delete Record from History"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                    <span>Delete Record</span>
+                                  </button>
+                                )}
                               </div>
                             )}
                           </div>
@@ -1120,6 +1591,106 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB: ACTIVE TENANTS & RENTEES DIRECTORY */}
+          {activeTab === 'tenants' && (
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 bg-gradient-to-r from-indigo-50 via-white to-slate-50 p-4 rounded-2xl border border-indigo-200">
+                <div>
+                  <h3 className="font-black text-sm sm:text-base text-indigo-950 flex items-center space-x-2">
+                    <Users className="h-4 w-4 text-indigo-600" />
+                    <span>Active Rentees & Customer Directory ({myBookings.length})</span>
+                  </h3>
+                  <p className="text-xs text-indigo-800/80 font-medium mt-0.5">
+                    Direct contact directory of tenants who booked your properties, vehicles, clothing, turfs, or hotels.
+                  </p>
+                </div>
+                <span className="text-xs font-mono font-bold bg-indigo-100 text-indigo-900 border border-indigo-300 px-3 py-1 rounded-xl">
+                  {acceptedBookings.length} Verified Active Rentees
+                </span>
+              </div>
+
+              {myBookings.length === 0 ? (
+                <div className="bg-white border border-slate-200 p-8 text-center rounded-2xl text-xs text-slate-500">
+                  No active tenant bookings found for your account yet.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                  {myBookings.map((b) => (
+                    <div
+                      key={b.id}
+                      className="bg-white border border-slate-200 p-4 rounded-2xl space-y-3 hover:shadow-md transition-all"
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                        <div className="flex items-center space-x-2.5">
+                          <div className="h-10 w-10 bg-indigo-100 text-indigo-950 font-black rounded-full flex items-center justify-center text-sm border border-indigo-200">
+                            {(b.userName || 'T').charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <h4 className="font-black text-slate-900 text-sm">{b.userName || 'Verified Rentee'}</h4>
+                            <p className="text-[11px] text-slate-500 font-mono">{b.userEmail || b.userPhone || 'Registered Tenant'}</p>
+                          </div>
+                        </div>
+
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black border uppercase tracking-wider ${
+                          b.status === 'Accepted' || b.status === 'Approved' || b.status === 'Active'
+                            ? 'bg-emerald-100 text-emerald-950 border-emerald-300'
+                            : 'bg-amber-100 text-amber-950 border-amber-300'
+                        }`}>
+                          {b.status}
+                        </span>
+                      </div>
+
+                      {/* Rented Asset Details */}
+                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200 flex items-center space-x-3">
+                        <img src={b.itemImage || 'https://images.unsplash.com/photo-1522708323590-d24dbb6b0267?w=300&q=80'} alt={b.itemTitle} className="h-12 w-12 object-cover rounded-lg shrink-0 border border-slate-200" />
+                        <div className="min-w-0 flex-1">
+                          <span className="text-[9px] font-black uppercase text-amber-700 block">{b.type || 'Asset'}</span>
+                          <h5 className="font-bold text-slate-900 truncate">{b.itemTitle}</h5>
+                          <p className="text-[10px] text-slate-500 font-mono">Move-In / Rental: {b.startDate || 'Immediate'}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-xs font-black text-amber-700 font-mono">₹{b.tokenPaidAmount || b.totalPrice}</span>
+                          <span className="block text-[9px] text-emerald-700 font-bold">Paid ✓</span>
+                        </div>
+                      </div>
+
+                      {/* Contact & Chat Controls */}
+                      <div className="flex items-center justify-between pt-1 font-bold">
+                        <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                          Government KYC Verified ✓
+                        </span>
+
+                        <div className="flex items-center space-x-2">
+                          {b.userPhone && (
+                            <a
+                              href={`https://wa.me/91${b.userPhone.replace(/\D/g, '')}?text=${encodeURIComponent(`Hello ${b.userName || 'Tenant'}, regarding your booking for ${b.itemTitle} on Recko India.`)}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="px-2.5 py-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[11px] font-bold transition-all shadow-xs flex items-center space-x-1"
+                            >
+                              <span>WhatsApp</span>
+                            </a>
+                          )}
+
+                          {onOpenBookingChat && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenBookingChat(b)}
+                              className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-amber-400 rounded-lg text-[11px] font-extrabold transition-all shadow-xs flex items-center space-x-1 cursor-pointer"
+                            >
+                              <MessageSquare className="h-3 w-3" />
+                              <span>Live Chat</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
@@ -1266,6 +1837,38 @@ export const LandlordDashboardModal: React.FC<LandlordDashboardModalProps> = ({
                         onChange={(e) => setOwnerEditCity(e.target.value)}
                         placeholder="e.g. Jaipur"
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-900 font-medium focus:ring-2 focus:ring-amber-400 outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="bg-amber-500/10 p-3.5 rounded-2xl border border-amber-400/40 space-y-3">
+                    <h4 className="font-extrabold text-xs text-amber-950 flex items-center space-x-1.5">
+                      <CreditCard className="h-4 w-4 text-amber-600" />
+                      <span>Owner Payment Gateway (UPI & QR Code) Settings</span>
+                    </h4>
+
+                    <div>
+                      <label className="block text-slate-800 font-extrabold mb-1 text-[11px]">Landlord Custom UPI ID (VPA) *</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. 9876543210@paytm or rahul@okhdfcbank"
+                        value={ownerEditUpiId}
+                        onChange={(e) => setOwnerEditUpiId(e.target.value)}
+                        className="w-full bg-white border border-amber-300 rounded-xl p-2.5 text-slate-950 font-mono font-bold text-xs focus:ring-2 focus:ring-amber-400 outline-none"
+                      />
+                      <span className="text-[10px] text-amber-900 block mt-1 font-medium">
+                        Tenants scanning QR will send token payments directly to this UPI VPA.
+                      </span>
+                    </div>
+
+                    <div>
+                      <label className="block text-slate-800 font-extrabold mb-1 text-[11px]">Custom UPI QR Code Image URL (Optional)</label>
+                      <input
+                        type="url"
+                        placeholder="https://... (Leave blank to use auto-generated live NPCI QR)"
+                        value={ownerEditUpiQrUrl}
+                        onChange={(e) => setOwnerEditUpiQrUrl(e.target.value)}
+                        className="w-full bg-white border border-amber-300 rounded-xl p-2.5 text-slate-950 font-mono text-xs focus:ring-2 focus:ring-amber-400 outline-none"
                       />
                     </div>
                   </div>

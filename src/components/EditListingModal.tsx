@@ -67,14 +67,14 @@ export const EditListingModal: React.FC<EditListingModalProps> = ({
         setOwnerContact(veh.ownerContact || '');
       } else if (itemType === 'hotel') {
         const hot = itemToEdit as Hotel;
-        setPriceOrRent(hot.rooms?.[0]?.pricePerNight || 2500);
+        setPriceOrRent(hot.pricePerNight || (hot.rooms && hot.rooms[0] && hot.rooms[0].pricePerNight) || 0);
         setOwnerContact(hot.ownerContact || '');
       } else if (itemType === 'restaurant') {
         const rest = itemToEdit as Restaurant;
-        setPriceOrRent(rest.averageCostForTwo || 600);
+        setPriceOrRent(rest.averageCostForTwo || rest.pricePerPerson || 0);
       } else if (itemType === 'library') {
         const lib = itemToEdit as Library;
-        setPriceOrRent(lib.dailyPassPrice || 100);
+        setPriceOrRent(lib.monthlyFee || lib.dailyPassPrice || 0);
       }
     }
   }, [itemToEdit, itemType]);

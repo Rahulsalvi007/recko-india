@@ -12,6 +12,9 @@ import {
 } from 'firebase/auth';
 import {
   getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   collection,
   doc,
   setDoc,
@@ -46,9 +49,27 @@ const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 
 const targetDbId = firebaseConfig.firestoreDatabaseId;
-export const db = (targetDbId && targetDbId !== 'default')
-  ? getFirestore(app, targetDbId)
-  : getFirestore(app);
+
+let firestoreInstance: any;
+try {
+  firestoreInstance = initializeFirestore(
+    app,
+    {
+      experimentalForceLongPolling: true,
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager()
+      })
+    },
+    (targetDbId && targetDbId !== 'default') ? targetDbId : undefined
+  );
+} catch (e) {
+  // If already initialized (e.g. during Vite HMR hot-reload), fallback to getFirestore
+  firestoreInstance = (targetDbId && targetDbId !== 'default')
+    ? getFirestore(app, targetDbId)
+    : getFirestore(app);
+}
+
+export const db = firestoreInstance;
 
 // Google Auth Provider
 const googleProvider = new GoogleAuthProvider();
